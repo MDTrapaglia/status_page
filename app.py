@@ -1,8 +1,8 @@
-import json
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import requests
+import yfinance as yf
 from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
@@ -10,6 +10,9 @@ app = Flask(__name__)
 COINS: List[Dict[str, str]] = [
     {"name": "Bitcoin", "symbol": "BTCUSDT"},
     {"name": "Ethereum", "symbol": "ETHUSDT"},
+]
+STOCKS: List[Dict[str, str]] = [
+    {"name": "Marvell Technology (MRVL)", "symbol": "MRVL"},
 ]
 BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr"
 
@@ -22,20 +25,28 @@ def _safe_float(value):
 
 
 def fetch_crypto_data() -> List[Dict[str, float]]:
-    """Fetch price and 24h change directly from Binance."""
+    """Fetch price and 24h change for crypto and stocks."""
+    crypto_data = _fetch_from_binance()
+    stock_data = _fetch_from_yfinance()
+    return crypto_data + stock_data
+
+
+def _fetch_from_binance() -> List[Dict[str, float]]:
     symbols = [coin["symbol"] for coin in COINS]
     try:
         response = requests.get(
             BINANCE_URL,
             params={
-                "symbols": json.dumps(symbols, separators=(",", ":")),
+                "symbols": "["
+                + ",".join(f'"{symbol}"' for symbol in symbols)
+                + "]",
             },
             timeout=10,
         )
         response.raise_for_status()
         raw = response.json()
     except requests.RequestException as exc:
-        raise RuntimeError("No se pudieron obtener los precios") from exc
+        raise RuntimeError("No se pudieron obtener los precios cripto") from exc
 
     payload_map = {item.get("symbol"): item for item in raw if isinstance(item, dict)}
     rows: List[Dict[str, float]] = []
@@ -49,6 +60,37 @@ def fetch_crypto_data() -> List[Dict[str, float]]:
                 "change": _safe_float(coin_payload.get("priceChangePercent")),
             }
         )
+    return rows
+
+
+def _fetch_from_yfinance() -> List[Dict[str, float]]:
+    rows: List[Dict[str, float]] = []
+    try:
+        for stock in STOCKS:
+            ticker = yf.Ticker(stock["symbol"])
+            history = ticker.history(period="2d", interval="1d")
+            if history.empty or "Close" not in history:
+                raise RuntimeError(f"No hay datos para {stock['symbol']}")
+
+            closes = history["Close"]
+            latest_price = closes.iloc[-1]
+            change_pct: Optional[float] = None
+            if len(closes) > 1:
+                previous = closes.iloc[-2]
+                if previous:
+                    change_pct = ((latest_price - previous) / previous) * 100
+
+            rows.append(
+                {
+                    "id": stock["symbol"],
+                    "name": stock["name"],
+                    "price": _safe_float(latest_price),
+                    "change": _safe_float(change_pct),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("No se pudieron obtener los precios de acciones") from exc
+
     return rows
 
 
