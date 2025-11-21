@@ -108,7 +108,6 @@
           Última actualización:
           <span id="updated-at">{{ updated_at }}</span>
         </div>
-        <button id="refresh-btn">Actualizar</button>
       </div>
 
       <div id="error" class="error" style="display: none"></div>
@@ -131,7 +130,6 @@
       const pricesBody = document.getElementById("prices-body");
       const errorBox = document.getElementById("error");
       const updatedAt = document.getElementById("updated-at");
-      const refreshBtn = document.getElementById("refresh-btn");
 
       const formatter = new Intl.NumberFormat("es-ES", {
         style: "currency",
@@ -174,7 +172,6 @@
 
       async function refresh() {
         try {
-          refreshBtn.disabled = true;
           const response = await fetch("/api/prices");
           const payload = await response.json();
 
@@ -190,8 +187,6 @@
           );
         } catch (err) {
           renderError(err.message);
-        } finally {
-          refreshBtn.disabled = false;
         }
       }
 
@@ -203,7 +198,6 @@
         renderError(initialError);
       }
 
-      refreshBtn.addEventListener("click", refresh);
       refresh();
       setInterval(refresh, 10000);
     </script>
