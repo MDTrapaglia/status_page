@@ -364,25 +364,25 @@
       function normalizeHistory(history) {
         const safe = history || {};
         const length = safe.labels?.length || 0;
-        const labels = [];
-        const temperature = [];
-        const cpu = [];
-        const ram = [];
-        const fan = [];
+        const points = [];
         for (let i = 0; i < length; i += 1) {
-          labels.push(new Date(safe.labels[i]));
-          temperature.push(safe.temperature?.[i] ?? null);
-          cpu.push(safe.cpu?.[i] ?? null);
-          ram.push(safe.ram?.[i] ?? null);
-          fan.push(safe.fan?.[i] ?? null);
+          const label = safe.labels[i];
+          if (!label) continue;
+          points.push({
+            x: new Date(label),
+            temperature: safe.temperature?.[i] ?? null,
+            cpu: safe.cpu?.[i] ?? null,
+            ram: safe.ram?.[i] ?? null,
+            fan: safe.fan?.[i] ?? null,
+          });
         }
-        return { labels, temperature, cpu, ram, fan };
+        return points;
       }
 
       function updatePiChart(history) {
         if (!piChartCanvas || !piChartWrapper) return;
-        const normalized = normalizeHistory(history);
-        if (!normalized.labels.length) {
+        const points = normalizeHistory(history);
+        if (!points.length) {
           piChartWrapper.style.display = "none";
           if (piChart) {
             piChart.data.labels = [];
@@ -393,16 +393,22 @@
         }
 
         piChartWrapper.style.display = "block";
+        const labels = points.map((point) => point.x);
+        const tempData = points.map((point) => ({ x: point.x, y: point.temperature }));
+        const cpuData = points.map((point) => ({ x: point.x, y: point.cpu }));
+        const ramData = points.map((point) => ({ x: point.x, y: point.ram }));
+        const fanData = points.map((point) => ({ x: point.x, y: point.fan }));
+
         if (!piChart) {
           const ctx = piChartCanvas.getContext("2d");
           piChart = new Chart(ctx, {
             type: "line",
             data: {
-              labels: normalized.labels,
+              labels,
               datasets: [
                 {
                   label: "Temp (°C)",
-                  data: normalized.temperature,
+                  data: tempData,
                   borderColor: "#fb923c",
                   backgroundColor: "rgba(251, 146, 60, 0.2)",
                   yAxisID: "temp",
@@ -411,7 +417,7 @@
                 },
                 {
                   label: "CPU (%)",
-                  data: normalized.cpu,
+                  data: cpuData,
                   borderColor: "#0ea5e9",
                   backgroundColor: "rgba(14, 165, 233, 0.2)",
                   yAxisID: "percent",
@@ -420,7 +426,7 @@
                 },
                 {
                   label: "RAM (%)",
-                  data: normalized.ram,
+                  data: ramData,
                   borderColor: "#22c55e",
                   backgroundColor: "rgba(34, 197, 94, 0.2)",
                   yAxisID: "percent",
@@ -429,7 +435,7 @@
                 },
                 {
                   label: "Ventilador (%)",
-                  data: normalized.fan,
+                  data: fanData,
                   borderColor: "#f472b6",
                   backgroundColor: "rgba(244, 114, 182, 0.2)",
                   yAxisID: "percent",
@@ -477,11 +483,11 @@
             },
           });
         } else {
-          piChart.data.labels = normalized.labels;
-          piChart.data.datasets[0].data = normalized.temperature;
-          piChart.data.datasets[1].data = normalized.cpu;
-          piChart.data.datasets[2].data = normalized.ram;
-          piChart.data.datasets[3].data = normalized.fan;
+          piChart.data.labels = labels;
+          piChart.data.datasets[0].data = tempData;
+          piChart.data.datasets[1].data = cpuData;
+          piChart.data.datasets[2].data = ramData;
+          piChart.data.datasets[3].data = fanData;
           piChart.update("none");
         }
       }
