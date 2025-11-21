@@ -153,6 +153,8 @@
         color: #fecdd3;
       }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
   </head>
   <body>
     <div class="stack">
@@ -200,6 +202,7 @@
           <div class="label" id="pi-highlight-label"></div>
           <div class="value" id="pi-highlight-value"></div>
         </div>
+        <canvas id="pi-chart" height="220"></canvas>
         <div class="metrics-grid" id="pi-metrics"></div>
       </section>
     </div>
@@ -209,6 +212,7 @@
       const initialError = {{ initial_error | tojson }};
       const initialSystem = {{ initial_system | tojson }};
       const initialPi = {{ initial_pi | tojson }};
+      const initialPiHistory = {{ initial_pi_history | tojson }};
       const pricesBody = document.getElementById("prices-body");
       const errorBox = document.getElementById("error");
       const updatedAt = document.getElementById("updated-at");
@@ -226,6 +230,8 @@
       const piHighlight = document.getElementById("pi-highlight");
       const piHighlightLabel = document.getElementById("pi-highlight-label");
       const piHighlightValue = document.getElementById("pi-highlight-value");
+      const piChartCanvas = document.getElementById("pi-chart");
+      let piChart = null;
 
       const formatter = new Intl.NumberFormat("es-ES", {
         style: "currency",
@@ -345,6 +351,131 @@
         });
       }
 
+      function normalizeHistory(history) {
+        const safe = history || {};
+        const length = safe.labels?.length || 0;
+        const labels = [];
+        const temperature = [];
+        const cpu = [];
+        const ram = [];
+        const fan = [];
+        for (let i = 0; i < length; i += 1) {
+          labels.push(new Date(safe.labels[i]));
+          temperature.push(safe.temperature?.[i] ?? null);
+          cpu.push(safe.cpu?.[i] ?? null);
+          ram.push(safe.ram?.[i] ?? null);
+          fan.push(safe.fan?.[i] ?? null);
+        }
+        return { labels, temperature, cpu, ram, fan };
+      }
+
+      function updatePiChart(history) {
+        if (!piChartCanvas) return;
+        const normalized = normalizeHistory(history);
+        if (!normalized.labels.length) {
+          piChartCanvas.style.display = "none";
+          if (piChart) {
+            piChart.data.labels = [];
+            piChart.data.datasets.forEach((dataset) => (dataset.data = []));
+            piChart.update("none");
+          }
+          return;
+        }
+
+        piChartCanvas.style.display = "block";
+        if (!piChart) {
+          const ctx = piChartCanvas.getContext("2d");
+          piChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: normalized.labels,
+              datasets: [
+                {
+                  label: "Temp (°C)",
+                  data: normalized.temperature,
+                  borderColor: "#fb923c",
+                  backgroundColor: "rgba(251, 146, 60, 0.2)",
+                  yAxisID: "temp",
+                  spanGaps: true,
+                  tension: 0.3,
+                },
+                {
+                  label: "CPU (%)",
+                  data: normalized.cpu,
+                  borderColor: "#0ea5e9",
+                  backgroundColor: "rgba(14, 165, 233, 0.2)",
+                  yAxisID: "percent",
+                  spanGaps: true,
+                  tension: 0.3,
+                },
+                {
+                  label: "RAM (%)",
+                  data: normalized.ram,
+                  borderColor: "#22c55e",
+                  backgroundColor: "rgba(34, 197, 94, 0.2)",
+                  yAxisID: "percent",
+                  spanGaps: true,
+                  tension: 0.3,
+                },
+                {
+                  label: "Ventilador (%)",
+                  data: normalized.fan,
+                  borderColor: "#f472b6",
+                  backgroundColor: "rgba(244, 114, 182, 0.2)",
+                  yAxisID: "percent",
+                  spanGaps: true,
+                  tension: 0.3,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: {
+                mode: "index",
+                intersect: false,
+              },
+              plugins: {
+                legend: {
+                  labels: { color: "#cbd5f5" },
+                },
+              },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { tooltipFormat: "HH:mm", displayFormats: { minute: "HH:mm" } },
+                  ticks: { color: "#94a3b8" },
+                  grid: { color: "rgba(148, 163, 184, 0.2)" },
+                },
+                temp: {
+                  type: "linear",
+                  position: "left",
+                  title: { display: true, text: "°C", color: "#94a3b8" },
+                  ticks: { color: "#94a3b8" },
+                  grid: { color: "rgba(148, 163, 184, 0.2)" },
+                },
+                percent: {
+                  type: "linear",
+                  position: "right",
+                  min: 0,
+                  max: 100,
+                  title: { display: true, text: "%", color: "#94a3b8" },
+                  ticks: { color: "#94a3b8" },
+                  grid: { drawOnChartArea: false },
+                },
+              },
+            },
+          });
+        } else {
+          piChart.data.labels = normalized.labels;
+          piChart.data.datasets[0].data = normalized.temperature;
+          piChart.data.datasets[1].data = normalized.cpu;
+          piChart.data.datasets[2].data = normalized.ram;
+          piChart.data.datasets[3].data = normalized.fan;
+          piChart.update("none");
+        }
+      }
+
       function renderError(message) {
         if (message) {
           errorBox.style.display = "block";
@@ -367,6 +498,7 @@
           renderRows(payload.data || []);
           renderSystem(payload.system);
           renderPi(payload.pi);
+          updatePiChart(payload.pi_history);
           renderError(payload.error || "");
           updatedAt.textContent = new Date(payload.updated_at).toLocaleTimeString(
             "es-ES",
@@ -380,6 +512,7 @@
       renderRows(initialData || []);
       renderSystem(initialSystem);
       renderPi(initialPi);
+      updatePiChart(initialPiHistory);
       renderError(initialError);
 
       refresh();

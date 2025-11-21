@@ -2,9 +2,10 @@ import glob
 import re
 import socket
 import subprocess
-from datetime import datetime, timezone
+from collections import deque
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 import psutil
 import requests
@@ -44,6 +45,9 @@ PI_FAN_PWM_GLOBS = [
     "/sys/devices/platform/*fan*/hwmon/hwmon*/pwm1",
     "/sys/class/hwmon/hwmon*/pwm1",
 ]
+MAX_FAN_RPM = 6000.0
+PI_HISTORY_WINDOW = timedelta(hours=4)
+PI_HISTORY: Deque[Dict[str, object]] = deque()
 
 
 def _safe_float(value):
@@ -95,6 +99,7 @@ def fetch_dashboard_data():
     markets: List[Dict[str, float]] = []
     system: Optional[Dict[str, object]] = None
     pi_stats: Optional[Dict[str, object]] = None
+    pi_raw: Optional[Dict[str, float]] = None
     errors: List[str] = []
 
     try:
@@ -108,7 +113,8 @@ def fetch_dashboard_data():
         errors.append(str(exc))
 
     try:
-        pi_stats = _fetch_pi_stats()
+        pi_stats, pi_raw = _fetch_pi_stats()
+        _record_pi_history(pi_raw)
     except RuntimeError as exc:
         errors.append(str(exc))
 
@@ -116,6 +122,7 @@ def fetch_dashboard_data():
         "markets": markets,
         "system": system,
         "pi": pi_stats,
+        "pi_history": _build_pi_history_series(),
         "error": "; ".join(errors) if errors else None,
     }
 
@@ -285,7 +292,40 @@ def _build_difficulty_highlight(payload: Dict[str, object]) -> Optional[Dict[str
     }
 
 
-def _fetch_pi_stats() -> Dict[str, object]:
+def _record_pi_history(point: Optional[Dict[str, Optional[float]]]):
+    if not point:
+        return
+    now = datetime.now(timezone.utc)
+    PI_HISTORY.append({"ts": now, **point})
+    cutoff = now - PI_HISTORY_WINDOW
+    while PI_HISTORY and PI_HISTORY[0]["ts"] < cutoff:
+        PI_HISTORY.popleft()
+
+
+def _build_pi_history_series() -> Dict[str, List[Optional[float]]]:
+    labels: List[str] = []
+    temperature: List[Optional[float]] = []
+    cpu: List[Optional[float]] = []
+    ram: List[Optional[float]] = []
+    fan: List[Optional[float]] = []
+
+    for entry in PI_HISTORY:
+        labels.append(entry["ts"].isoformat())
+        temperature.append(entry.get("temperature"))
+        cpu.append(entry.get("cpu"))
+        ram.append(entry.get("ram"))
+        fan.append(entry.get("fan"))
+
+    return {
+        "labels": labels,
+        "temperature": temperature,
+        "cpu": cpu,
+        "ram": ram,
+        "fan": fan,
+    }
+
+
+def _fetch_pi_stats() -> Tuple[Dict[str, object], Dict[str, Optional[float]]]:
     try:
         cpu_percent = psutil.cpu_percent(interval=0.1)
         virtual_mem = psutil.virtual_memory()
@@ -323,13 +363,13 @@ def _fetch_pi_stats() -> Dict[str, object]:
             }
         )
 
-    fan_speed = _get_pi_fan_speed()
-    if fan_speed:
+    fan_display, fan_percent = _get_pi_fan_speed()
+    if fan_display:
         metrics.append(
             {
                 "id": "pi_fan",
                 "label": "Ventilador",
-                "value": fan_speed,
+                "value": fan_display,
             }
         )
 
@@ -340,13 +380,22 @@ def _fetch_pi_stats() -> Dict[str, object]:
             "value": f"{temperature:.1f} °C",
         }
 
-    return {
+    display = {
         "meta": {
             "hostname": socket.gethostname(),
         },
         "metrics": metrics,
         "highlight": highlight,
     }
+
+    raw_point = {
+        "cpu": cpu_percent,
+        "ram": virtual_mem.percent,
+        "temperature": temperature,
+        "fan": fan_percent,
+    }
+
+    return display, raw_point
 
 
 def _get_pi_temperature() -> Optional[float]:
@@ -370,7 +419,7 @@ def _get_pi_temperature() -> Optional[float]:
     return None
 
 
-def _get_pi_fan_speed() -> Optional[str]:
+def _get_pi_fan_speed() -> Tuple[Optional[str], Optional[float]]:
     for pattern in PI_FAN_INPUT_GLOBS:
         for path in glob.glob(pattern):
             try:
@@ -378,7 +427,8 @@ def _get_pi_fan_speed() -> Optional[str]:
                 if value:
                     rpm = float(value)
                     if rpm > 0:
-                        return f"{rpm:,.0f} RPM"
+                        percent = min(100.0, (rpm / MAX_FAN_RPM) * 100)
+                        return f"{rpm:,.0f} RPM", percent
             except (OSError, ValueError):
                 continue
 
@@ -390,11 +440,11 @@ def _get_pi_fan_speed() -> Optional[str]:
                     continue
                 duty = float(value)
                 percent = duty / 255 * 100
-                return f"{percent:.0f}% PWM"
+                return f"{percent:.0f}% PWM", percent
             except (OSError, ValueError):
                 continue
 
-    return None
+    return None, None
 
 
 def _format_bytes(value: float) -> str:
@@ -415,6 +465,7 @@ def index():
         initial_data=dashboard["markets"],
         initial_system=dashboard["system"],
         initial_pi=dashboard["pi"],
+        initial_pi_history=dashboard["pi_history"],
         initial_error=dashboard["error"],
         updated_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -430,6 +481,7 @@ def prices():
             "data": dashboard["markets"],
             "system": dashboard["system"],
             "pi": dashboard["pi"],
+            "pi_history": dashboard["pi_history"],
             "error": dashboard["error"],
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
