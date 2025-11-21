@@ -103,6 +103,28 @@
         gap: 1rem;
       }
 
+      .highlight {
+        margin-top: 1.5rem;
+        padding: 1.25rem;
+        border-radius: 0.75rem;
+        background: linear-gradient(120deg, rgba(248, 4, 33, 0.25), rgba(15, 23, 42, 0.65));
+        border: 1px solid rgba(248, 4, 33, 0.35);
+      }
+
+      .highlight .label {
+        font-size: 0.85rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #fecdd3;
+        margin-bottom: 0.35rem;
+      }
+
+      .highlight .value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #f8fafc;
+      }
+
       .metric {
         background: rgba(15, 23, 42, 0.35);
         padding: 1rem;
@@ -162,6 +184,10 @@
           <h2 id="device-title">AxeOS</h2>
           <div id="device-subtitle" class="meta"></div>
         </div>
+        <div id="device-highlight" class="highlight" style="display: none">
+          <div class="label" id="highlight-label"></div>
+          <div class="value" id="highlight-value"></div>
+        </div>
         <div class="metrics-grid" id="device-metrics"></div>
       </section>
     </div>
@@ -177,6 +203,9 @@
       const deviceTitle = document.getElementById("device-title");
       const deviceSubtitle = document.getElementById("device-subtitle");
       const deviceMetrics = document.getElementById("device-metrics");
+      const deviceHighlight = document.getElementById("device-highlight");
+      const highlightLabel = document.getElementById("highlight-label");
+      const highlightValue = document.getElementById("highlight-value");
 
       const formatter = new Intl.NumberFormat("es-ES", {
         style: "currency",
@@ -212,7 +241,10 @@
       }
 
       function renderSystem(system) {
-        if (!system || !system.metrics || !system.metrics.length) {
+        const hasMetrics = !!(system && system.metrics && system.metrics.length);
+        const hasHighlight = !!(system && system.highlight);
+
+        if (!hasMetrics && !hasHighlight) {
           deviceCard.style.display = "none";
           return;
         }
@@ -227,16 +259,26 @@
         if (ip) metaParts.push(ip);
         deviceSubtitle.textContent = metaParts.join(" • ");
 
+        if (system.highlight && system.highlight.value) {
+          deviceHighlight.style.display = "block";
+          highlightLabel.textContent = system.highlight.label || "Máxima dificultad";
+          highlightValue.textContent = system.highlight.value;
+        } else {
+          deviceHighlight.style.display = "none";
+        }
+
         deviceMetrics.innerHTML = "";
-        system.metrics.forEach((metric) => {
-          const tile = document.createElement("div");
-          tile.className = "metric";
-          tile.innerHTML = `
-            <div class="label">${metric.label}</div>
-            <div class="value">${metric.value}</div>
-          `;
-          deviceMetrics.appendChild(tile);
-        });
+        if (Array.isArray(system.metrics)) {
+          system.metrics.forEach((metric) => {
+            const tile = document.createElement("div");
+            tile.className = "metric";
+            tile.innerHTML = `
+              <div class="label">${metric.label}</div>
+              <div class="value">${metric.value}</div>
+            `;
+            deviceMetrics.appendChild(tile);
+          });
+        }
       }
 
       function renderError(message) {

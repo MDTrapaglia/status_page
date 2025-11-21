@@ -1,5 +1,6 @@
+import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 import yfinance as yf
@@ -18,6 +19,14 @@ BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr"
 AXEOS_HOST = "192.168.100.117"
 AXEOS_BASE_URL = f"http://{AXEOS_HOST}"
 AXEOS_SYSTEM_INFO = f"{AXEOS_BASE_URL}/api/system/info"
+DIFF_MULTIPLIERS: Dict[str, float] = {
+    "": 1,
+    "K": 1_000,
+    "M": 1_000_000,
+    "G": 1_000_000_000,
+    "T": 1_000_000_000_000,
+    "P": 1_000_000_000_000_000,
+}
 
 
 def _safe_float(value):
@@ -179,6 +188,8 @@ def _fetch_system_snapshot() -> Dict[str, object]:
             continue
         metrics.append({"id": key, "label": label, "value": formatted})
 
+    highlight = _build_difficulty_highlight(payload)
+
     return {
         "meta": {
             "hostname": payload.get("hostname") or "AxeOS",
@@ -186,6 +197,69 @@ def _fetch_system_snapshot() -> Dict[str, object]:
             "ip": AXEOS_HOST,
         },
         "metrics": metrics,
+        "highlight": highlight,
+    }
+
+
+def _parse_difficulty(value) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip().upper()
+    match = re.match(r"^([0-9]*\.?[0-9]+)\s*([KMGTP]?)", text)
+    if not match:
+        return None
+    number = float(match.group(1))
+    unit = match.group(2) or ""
+    multiplier = DIFF_MULTIPLIERS.get(unit, 1)
+    return number * multiplier
+
+
+def _format_difficulty_display(value) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    number = _safe_float(value)
+    if number is None:
+        return None
+    units = ["", "K", "M", "G", "T", "P"]
+    idx = 0
+    while number >= 1000 and idx < len(units) - 1:
+        number /= 1000
+        idx += 1
+    if units[idx]:
+        return f"{number:.3g}{units[idx]}"
+    return f"{number:,.0f}"
+
+
+def _build_difficulty_highlight(payload: Dict[str, object]) -> Optional[Dict[str, str]]:
+    candidates: List[Tuple[float, str, object]] = []
+    mappings = [
+        ("bestDiff", "Mejor share histórica"),
+        ("bestSessionDiff", "Mejor share sesión"),
+        ("stratumDiff", "Dificultad pool"),
+    ]
+    for key, label in mappings:
+        raw = payload.get(key)
+        parsed = _parse_difficulty(raw)
+        if parsed is None:
+            continue
+        candidates.append((parsed, label, raw))
+
+    if not candidates:
+        return None
+
+    best_value, source_label, raw_value = max(candidates, key=lambda item: item[0])
+    display_value = _format_difficulty_display(raw_value) or _format_difficulty_display(best_value)
+    if display_value is None:
+        return None
+
+    return {
+        "label": f"Dificultad máxima ({source_label})",
+        "value": display_value,
     }
 
 
