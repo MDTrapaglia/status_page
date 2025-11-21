@@ -15,6 +15,9 @@ STOCKS: List[Dict[str, str]] = [
     {"name": "Marvell Technology (MRVL)", "symbol": "MRVL"},
 ]
 BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr"
+AXEOS_HOST = "192.168.100.117"
+AXEOS_BASE_URL = f"http://{AXEOS_HOST}"
+AXEOS_SYSTEM_INFO = f"{AXEOS_BASE_URL}/api/system/info"
 
 
 def _safe_float(value):
@@ -24,7 +27,69 @@ def _safe_float(value):
         return None
 
 
-def fetch_crypto_data() -> List[Dict[str, float]]:
+def _format_number(value: Optional[float], decimals: int = 2, suffix: str = "") -> Optional[str]:
+    number = _safe_float(value)
+    if number is None:
+        return None
+    return f"{number:,.{decimals}f}{suffix}"
+
+
+def _format_duration(value: Optional[float]) -> Optional[str]:
+    total_seconds = _safe_float(value)
+    if total_seconds is None:
+        return None
+    seconds = int(total_seconds)
+    days, remainder = divmod(seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, _ = divmod(remainder, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours or days:
+        parts.append(f"{hours}h")
+    parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+SYSTEM_FIELDS = [
+    ("hashRate", "Hashrate (GH/s)", lambda v: _format_number(v, 2, " GH/s")),
+    ("power", "Potencia (W)", lambda v: _format_number(v, 2, " W")),
+    ("temp", "Temp ASIC (°C)", lambda v: _format_number(v, 1, " °C")),
+    ("vrTemp", "Temp VRM (°C)", lambda v: _format_number(v, 1, " °C")),
+    ("fanspeed", "Velocidad ventilador", lambda v: _format_number(v, 0, " %")),
+    ("fanrpm", "RPM ventilador", lambda v: _format_number(v, 0, " RPM")),
+    ("sharesAccepted", "Shares aceptados", lambda v: _format_number(v, 0)),
+    ("sharesRejected", "Shares rechazados", lambda v: _format_number(v, 0)),
+    ("wifiRSSI", "Señal WiFi", lambda v: _format_number(v, 0, " dBm")),
+    ("uptimeSeconds", "Uptime", _format_duration),
+    ("stratumURL", "Pool principal", lambda v: str(v)),
+    ("version", "Firmware", lambda v: str(v)),
+]
+
+
+def fetch_dashboard_data():
+    markets: List[Dict[str, float]] = []
+    system: Optional[Dict[str, object]] = None
+    errors: List[str] = []
+
+    try:
+        markets = fetch_market_data()
+    except RuntimeError as exc:
+        errors.append(str(exc))
+
+    try:
+        system = _fetch_system_snapshot()
+    except RuntimeError as exc:
+        errors.append(str(exc))
+
+    return {
+        "markets": markets,
+        "system": system,
+        "error": "; ".join(errors) if errors else None,
+    }
+
+
+def fetch_market_data() -> List[Dict[str, float]]:
     """Fetch price and 24h change for crypto and stocks."""
     crypto_data = _fetch_from_binance()
     stock_data = _fetch_from_yfinance()
@@ -94,36 +159,62 @@ def _fetch_from_yfinance() -> List[Dict[str, float]]:
     return rows
 
 
+def _fetch_system_snapshot() -> Dict[str, object]:
+    try:
+        response = requests.get(AXEOS_SYSTEM_INFO, timeout=5)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError("No se pudieron obtener los datos del AxeOS") from exc
+
+    metrics = []
+    for key, label, formatter in SYSTEM_FIELDS:
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if value is None:
+            continue
+        formatted = formatter(value)
+        if formatted is None:
+            continue
+        metrics.append({"id": key, "label": label, "value": formatted})
+
+    return {
+        "meta": {
+            "hostname": payload.get("hostname") or "AxeOS",
+            "model": payload.get("ASICModel"),
+            "ip": AXEOS_HOST,
+        },
+        "metrics": metrics,
+    }
+
+
 @app.route("/")
 def index():
-    try:
-        crypto_data = fetch_crypto_data()
-        error = None
-    except RuntimeError as exc:
-        crypto_data = []
-        error = str(exc)
+    dashboard = fetch_dashboard_data()
 
     return render_template(
         "index.html",
-        initial_data=crypto_data,
-        initial_error=error,
+        initial_data=dashboard["markets"],
+        initial_system=dashboard["system"],
+        initial_error=dashboard["error"],
         updated_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
 @app.route("/api/prices")
 def prices():
-    try:
-        crypto_data = fetch_crypto_data()
-    except RuntimeError as exc:
-        return jsonify({"error": str(exc)}), 502
+    dashboard = fetch_dashboard_data()
+    status_code = 200 if not dashboard["error"] else 207
 
     return jsonify(
         {
-            "data": crypto_data,
+            "data": dashboard["markets"],
+            "system": dashboard["system"],
+            "error": dashboard["error"],
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-    )
+    ), status_code
 
 
 if __name__ == "__main__":

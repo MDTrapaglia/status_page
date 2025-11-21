@@ -19,10 +19,20 @@
         color: #e2e8f0;
       }
 
-      h1 {
-        margin-top: 0;
-        margin-bottom: 0.5rem;
+      h1,
+      h2 {
+        margin: 0;
         font-size: 2rem;
+      }
+
+      h2 {
+        font-size: 1.4rem;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
       }
 
       .card {
@@ -31,6 +41,12 @@
         border-radius: 0.75rem;
         box-shadow: 0 10px 25px rgba(15, 23, 42, 0.4);
         max-width: 720px;
+      }
+
+      .device-header {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
       }
 
       table {
@@ -80,6 +96,33 @@
         font-size: 0.9rem;
       }
 
+      .metrics-grid {
+        margin-top: 1.5rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+      }
+
+      .metric {
+        background: rgba(15, 23, 42, 0.35);
+        padding: 1rem;
+        border-radius: 0.75rem;
+        border: 1px solid rgba(148, 163, 184, 0.15);
+      }
+
+      .metric .label {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #94a3b8;
+        margin-bottom: 0.35rem;
+      }
+
+      .metric .value {
+        font-size: 1.2rem;
+        font-weight: 600;
+      }
+
       .error {
         margin-top: 1rem;
         padding: 0.75rem 1rem;
@@ -87,49 +130,53 @@
         background: rgba(251, 113, 133, 0.15);
         color: #fecdd3;
       }
-
-      button {
-        appearance: none;
-        border: none;
-        border-radius: 999px;
-        padding: 0.5rem 1.25rem;
-        font-weight: 600;
-        cursor: pointer;
-        background: var(--accent);
-        color: #0f172a;
-      }
     </style>
   </head>
   <body>
-    <main class="card">
-      <h1>Mercado Cripto</h1>
-      <div class="meta">
-        <div>
-          Última actualización:
-          <span id="updated-at">{{ updated_at }}</span>
+    <div class="stack">
+      <section class="card">
+        <h1>Mercados y acciones</h1>
+        <div class="meta">
+          <div>
+            Última actualización:
+            <span id="updated-at">{{ updated_at }}</span>
+          </div>
         </div>
-      </div>
 
-      <div id="error" class="error" style="display: none"></div>
+        <div id="error" class="error" style="display: none"></div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Activo</th>
-            <th>Precio (USD)</th>
-            <th>Variación 24h</th>
-          </tr>
-        </thead>
-        <tbody id="prices-body"></tbody>
-      </table>
-    </main>
+        <table>
+          <thead>
+            <tr>
+              <th>Activo</th>
+              <th>Precio (USD)</th>
+              <th>Variación 24h</th>
+            </tr>
+          </thead>
+          <tbody id="prices-body"></tbody>
+        </table>
+      </section>
+
+      <section class="card" id="device-card" style="display: none">
+        <div class="device-header">
+          <h2 id="device-title">AxeOS</h2>
+          <div id="device-subtitle" class="meta"></div>
+        </div>
+        <div class="metrics-grid" id="device-metrics"></div>
+      </section>
+    </div>
 
     <script>
       const initialData = {{ initial_data | tojson }};
       const initialError = {{ initial_error | tojson }};
+      const initialSystem = {{ initial_system | tojson }};
       const pricesBody = document.getElementById("prices-body");
       const errorBox = document.getElementById("error");
       const updatedAt = document.getElementById("updated-at");
+      const deviceCard = document.getElementById("device-card");
+      const deviceTitle = document.getElementById("device-title");
+      const deviceSubtitle = document.getElementById("device-subtitle");
+      const deviceMetrics = document.getElementById("device-metrics");
 
       const formatter = new Intl.NumberFormat("es-ES", {
         style: "currency",
@@ -140,6 +187,12 @@
       function renderRows(items) {
         pricesBody.innerHTML = "";
         items.forEach((item) => {
+          const changeClass =
+            item.change === null || item.change === undefined
+              ? ""
+              : item.change >= 0
+              ? "positive"
+              : "negative";
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>${item.name}</td>
@@ -148,15 +201,41 @@
                 ? "—"
                 : formatter.format(item.price)
             }</td>
-            <td class="change ${
-              item.change >= 0 ? "positive" : "negative"
-            }">${
+            <td class="change ${changeClass}">${
             item.change === null || item.change === undefined
               ? "—"
               : item.change.toFixed(2) + "%"
           }</td>
           `;
           pricesBody.appendChild(row);
+        });
+      }
+
+      function renderSystem(system) {
+        if (!system || !system.metrics || !system.metrics.length) {
+          deviceCard.style.display = "none";
+          return;
+        }
+
+        deviceCard.style.display = "block";
+        const hostname = system.meta?.hostname || "AxeOS";
+        const model = system.meta?.model;
+        const ip = system.meta?.ip;
+        deviceTitle.textContent = hostname;
+        const metaParts = [];
+        if (model) metaParts.push(model);
+        if (ip) metaParts.push(ip);
+        deviceSubtitle.textContent = metaParts.join(" • ");
+
+        deviceMetrics.innerHTML = "";
+        system.metrics.forEach((metric) => {
+          const tile = document.createElement("div");
+          tile.className = "metric";
+          tile.innerHTML = `
+            <div class="label">${metric.label}</div>
+            <div class="value">${metric.value}</div>
+          `;
+          deviceMetrics.appendChild(tile);
         });
       }
 
@@ -175,12 +254,13 @@
           const response = await fetch("/api/prices");
           const payload = await response.json();
 
-          if (!response.ok || payload.error) {
+          if (!response.ok) {
             throw new Error(payload.error || "Error desconocido");
           }
 
-          renderRows(payload.data);
-          renderError("");
+          renderRows(payload.data || []);
+          renderSystem(payload.system);
+          renderError(payload.error || "");
           updatedAt.textContent = new Date(payload.updated_at).toLocaleTimeString(
             "es-ES",
             { hour: "2-digit", minute: "2-digit", second: "2-digit" }
@@ -190,13 +270,9 @@
         }
       }
 
-      if (initialData?.length) {
-        renderRows(initialData);
-      }
-
-      if (initialError) {
-        renderError(initialError);
-      }
+      renderRows(initialData || []);
+      renderSystem(initialSystem);
+      renderError(initialError);
 
       refresh();
       setInterval(refresh, 10000);
