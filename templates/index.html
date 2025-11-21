@@ -96,6 +96,13 @@
         font-size: 0.9rem;
       }
 
+      .chart-wrapper {
+        width: 100%;
+        height: clamp(220px, 35vh, 360px);
+        margin-top: 1.5rem;
+        position: relative;
+      }
+
       .metrics-grid {
         margin-top: 1.5rem;
         display: grid;
@@ -202,7 +209,9 @@
           <div class="label" id="pi-highlight-label"></div>
           <div class="value" id="pi-highlight-value"></div>
         </div>
-        <canvas id="pi-chart" height="220"></canvas>
+        <div class="chart-wrapper" id="pi-chart-wrapper" style="display: none">
+          <canvas id="pi-chart"></canvas>
+        </div>
         <div class="metrics-grid" id="pi-metrics"></div>
       </section>
     </div>
@@ -230,6 +239,7 @@
       const piHighlight = document.getElementById("pi-highlight");
       const piHighlightLabel = document.getElementById("pi-highlight-label");
       const piHighlightValue = document.getElementById("pi-highlight-value");
+      const piChartWrapper = document.getElementById("pi-chart-wrapper");
       const piChartCanvas = document.getElementById("pi-chart");
       let piChart = null;
 
@@ -370,10 +380,10 @@
       }
 
       function updatePiChart(history) {
-        if (!piChartCanvas) return;
+        if (!piChartCanvas || !piChartWrapper) return;
         const normalized = normalizeHistory(history);
         if (!normalized.labels.length) {
-          piChartCanvas.style.display = "none";
+          piChartWrapper.style.display = "none";
           if (piChart) {
             piChart.data.labels = [];
             piChart.data.datasets.forEach((dataset) => (dataset.data = []));
@@ -382,7 +392,7 @@
           return;
         }
 
-        piChartCanvas.style.display = "block";
+        piChartWrapper.style.display = "block";
         if (!piChart) {
           const ctx = piChartCanvas.getContext("2d");
           piChart = new Chart(ctx, {
