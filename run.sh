@@ -13,4 +13,4 @@ fi
 source "$VENV_PATH/bin/activate"
 
 export FLASK_APP=app
-flask run --reload --no-debugger
+flask run --reload --no-debugger --host 0.0.0.0 --port 80
