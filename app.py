@@ -2,6 +2,8 @@ import glob
 import re
 import socket
 import subprocess
+import threading
+import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -48,6 +50,8 @@ PI_FAN_PWM_GLOBS = [
 MAX_FAN_RPM = 6000.0
 PI_HISTORY_WINDOW = timedelta(hours=4)
 PI_HISTORY: Deque[Dict[str, object]] = deque()
+PI_HISTORY_LOCK = threading.Lock()
+PI_SAMPLE_INTERVAL_SECONDS = 60
 
 
 def _safe_float(value):
@@ -296,10 +300,11 @@ def _record_pi_history(point: Optional[Dict[str, Optional[float]]]):
     if not point:
         return
     now = datetime.now(timezone.utc)
-    PI_HISTORY.append({"ts": now, **point})
-    cutoff = now - PI_HISTORY_WINDOW
-    while PI_HISTORY and PI_HISTORY[0]["ts"] < cutoff:
-        PI_HISTORY.popleft()
+    with PI_HISTORY_LOCK:
+        PI_HISTORY.append({"ts": now, **point})
+        cutoff = now - PI_HISTORY_WINDOW
+        while PI_HISTORY and PI_HISTORY[0]["ts"] < cutoff:
+            PI_HISTORY.popleft()
 
 
 def _build_pi_history_series() -> Dict[str, List[Optional[float]]]:
@@ -309,12 +314,13 @@ def _build_pi_history_series() -> Dict[str, List[Optional[float]]]:
     ram: List[Optional[float]] = []
     fan: List[Optional[float]] = []
 
-    for entry in PI_HISTORY:
-        labels.append(entry["ts"].isoformat())
-        temperature.append(entry.get("temperature"))
-        cpu.append(entry.get("cpu"))
-        ram.append(entry.get("ram"))
-        fan.append(entry.get("fan"))
+    with PI_HISTORY_LOCK:
+        for entry in PI_HISTORY:
+            labels.append(entry["ts"].isoformat())
+            temperature.append(entry.get("temperature"))
+            cpu.append(entry.get("cpu"))
+            ram.append(entry.get("ram"))
+            fan.append(entry.get("fan"))
 
     return {
         "labels": labels,
@@ -454,6 +460,24 @@ def _format_bytes(value: float) -> str:
         if size < 1024 or unit == units[-1]:
             return f"{size:.1f} {unit}"
         size /= 1024
+
+
+def _pi_sampler_loop():
+    while True:
+        try:
+            _, raw_point = _fetch_pi_stats()
+            _record_pi_history(raw_point)
+        except RuntimeError:
+            pass
+        time.sleep(PI_SAMPLE_INTERVAL_SECONDS)
+
+
+def _start_pi_sampler():
+    thread = threading.Thread(target=_pi_sampler_loop, name="pi-sampler", daemon=True)
+    thread.start()
+
+
+_start_pi_sampler()
 
 
 @app.route("/")
