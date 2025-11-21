@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from typing import Dict, List
 
@@ -6,22 +7,28 @@ from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
 
-COINS: Dict[str, str] = {
-    "bitcoin": "Bitcoin",
-    "ethereum": "Ethereum",
-}
-API_URL = "https://api.coingecko.com/api/v3/simple/price"
+COINS: List[Dict[str, str]] = [
+    {"name": "Bitcoin", "symbol": "BTCUSDT"},
+    {"name": "Ethereum", "symbol": "ETHUSDT"},
+]
+BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr"
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def fetch_crypto_data() -> List[Dict[str, float]]:
-    """Fetch price and 24h change for the configured coins."""
+    """Fetch price and 24h change directly from Binance."""
+    symbols = [coin["symbol"] for coin in COINS]
     try:
         response = requests.get(
-            API_URL,
+            BINANCE_URL,
             params={
-                "ids": ",".join(COINS.keys()),
-                "vs_currencies": "usd",
-                "include_24hr_change": "true",
+                "symbols": json.dumps(symbols, separators=(",", ":")),
             },
             timeout=10,
         )
@@ -30,15 +37,16 @@ def fetch_crypto_data() -> List[Dict[str, float]]:
     except requests.RequestException as exc:
         raise RuntimeError("No se pudieron obtener los precios") from exc
 
+    payload_map = {item.get("symbol"): item for item in raw if isinstance(item, dict)}
     rows: List[Dict[str, float]] = []
-    for coin_id, display_name in COINS.items():
-        coin_payload = raw.get(coin_id) or {}
+    for coin in COINS:
+        coin_payload = payload_map.get(coin["symbol"]) or {}
         rows.append(
             {
-                "id": coin_id,
-                "name": display_name,
-                "price": coin_payload.get("usd"),
-                "change": coin_payload.get("usd_24h_change"),
+                "id": coin["symbol"],
+                "name": coin["name"],
+                "price": _safe_float(coin_payload.get("lastPrice")),
+                "change": _safe_float(coin_payload.get("priceChangePercent")),
             }
         )
     return rows
