@@ -190,12 +190,25 @@
         </div>
         <div class="metrics-grid" id="device-metrics"></div>
       </section>
+
+      <section class="card" id="pi-card" style="display: none">
+        <div class="device-header">
+          <h2 id="pi-title">Raspberry Pi</h2>
+          <div id="pi-subtitle" class="meta"></div>
+        </div>
+        <div id="pi-highlight" class="highlight" style="display: none">
+          <div class="label" id="pi-highlight-label"></div>
+          <div class="value" id="pi-highlight-value"></div>
+        </div>
+        <div class="metrics-grid" id="pi-metrics"></div>
+      </section>
     </div>
 
     <script>
       const initialData = {{ initial_data | tojson }};
       const initialError = {{ initial_error | tojson }};
       const initialSystem = {{ initial_system | tojson }};
+      const initialPi = {{ initial_pi | tojson }};
       const pricesBody = document.getElementById("prices-body");
       const errorBox = document.getElementById("error");
       const updatedAt = document.getElementById("updated-at");
@@ -206,6 +219,13 @@
       const deviceHighlight = document.getElementById("device-highlight");
       const highlightLabel = document.getElementById("highlight-label");
       const highlightValue = document.getElementById("highlight-value");
+      const piCard = document.getElementById("pi-card");
+      const piTitle = document.getElementById("pi-title");
+      const piSubtitle = document.getElementById("pi-subtitle");
+      const piMetrics = document.getElementById("pi-metrics");
+      const piHighlight = document.getElementById("pi-highlight");
+      const piHighlightLabel = document.getElementById("pi-highlight-label");
+      const piHighlightValue = document.getElementById("pi-highlight-value");
 
       const formatter = new Intl.NumberFormat("es-ES", {
         style: "currency",
@@ -240,45 +260,89 @@
         });
       }
 
-      function renderSystem(system) {
-        const hasMetrics = !!(system && system.metrics && system.metrics.length);
-        const hasHighlight = !!(system && system.highlight);
+      function renderMetricsCard(data, elements) {
+        const { card, titleEl, subtitleEl, metricsEl, highlightEl, highlightLabelEl, highlightValueEl, defaultTitle, formatSubtitle } = elements;
+        const hasMetrics = Array.isArray(data?.metrics) && data.metrics.length > 0;
+        const hasHighlight = !!(data?.highlight && data.highlight.value);
 
         if (!hasMetrics && !hasHighlight) {
-          deviceCard.style.display = "none";
+          card.style.display = "none";
+          if (metricsEl) metricsEl.innerHTML = "";
           return;
         }
 
-        deviceCard.style.display = "block";
-        const hostname = system.meta?.hostname || "AxeOS";
-        const model = system.meta?.model;
-        const ip = system.meta?.ip;
-        deviceTitle.textContent = hostname;
-        const metaParts = [];
-        if (model) metaParts.push(model);
-        if (ip) metaParts.push(ip);
-        deviceSubtitle.textContent = metaParts.join(" • ");
-
-        if (system.highlight && system.highlight.value) {
-          deviceHighlight.style.display = "block";
-          highlightLabel.textContent = system.highlight.label || "Máxima dificultad";
-          highlightValue.textContent = system.highlight.value;
-        } else {
-          deviceHighlight.style.display = "none";
+        card.style.display = "block";
+        const meta = data?.meta || {};
+        if (titleEl) {
+          titleEl.textContent = meta.hostname || defaultTitle;
+        }
+        if (subtitleEl) {
+          const subtitle = formatSubtitle ? formatSubtitle(meta) : "";
+          subtitleEl.textContent = subtitle;
+          subtitleEl.style.display = subtitle ? "block" : "none";
         }
 
-        deviceMetrics.innerHTML = "";
-        if (Array.isArray(system.metrics)) {
-          system.metrics.forEach((metric) => {
+        if (highlightEl) {
+          if (data?.highlight && data.highlight.value) {
+            highlightEl.style.display = "block";
+            if (highlightLabelEl) {
+              highlightLabelEl.textContent = data.highlight.label || "";
+            }
+            if (highlightValueEl) {
+              highlightValueEl.textContent = data.highlight.value;
+            }
+          } else {
+            highlightEl.style.display = "none";
+          }
+        }
+
+        if (metricsEl) {
+          metricsEl.innerHTML = "";
+          (data?.metrics || []).forEach((metric) => {
             const tile = document.createElement("div");
             tile.className = "metric";
             tile.innerHTML = `
               <div class="label">${metric.label}</div>
               <div class="value">${metric.value}</div>
             `;
-            deviceMetrics.appendChild(tile);
+            metricsEl.appendChild(tile);
           });
         }
+      }
+
+      function renderSystem(system) {
+        renderMetricsCard(system, {
+          card: deviceCard,
+          titleEl: deviceTitle,
+          subtitleEl: deviceSubtitle,
+          metricsEl: deviceMetrics,
+          highlightEl: deviceHighlight,
+          highlightLabelEl: highlightLabel,
+          highlightValueEl: highlightValue,
+          defaultTitle: "AxeOS",
+          formatSubtitle(meta) {
+            const parts = [];
+            if (meta.model) parts.push(meta.model);
+            if (meta.ip) parts.push(meta.ip);
+            return parts.join(" • ");
+          },
+        });
+      }
+
+      function renderPi(pi) {
+        renderMetricsCard(pi, {
+          card: piCard,
+          titleEl: piTitle,
+          subtitleEl: piSubtitle,
+          metricsEl: piMetrics,
+          highlightEl: piHighlight,
+          highlightLabelEl: piHighlightLabel,
+          highlightValueEl: piHighlightValue,
+          defaultTitle: "Raspberry Pi",
+          formatSubtitle() {
+            return "";
+          },
+        });
       }
 
       function renderError(message) {
@@ -302,6 +366,7 @@
 
           renderRows(payload.data || []);
           renderSystem(payload.system);
+          renderPi(payload.pi);
           renderError(payload.error || "");
           updatedAt.textContent = new Date(payload.updated_at).toLocaleTimeString(
             "es-ES",
@@ -314,6 +379,7 @@
 
       renderRows(initialData || []);
       renderSystem(initialSystem);
+      renderPi(initialPi);
       renderError(initialError);
 
       refresh();

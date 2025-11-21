@@ -1,7 +1,12 @@
+import glob
 import re
+import socket
+import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import psutil
 import requests
 import yfinance as yf
 from flask import Flask, jsonify, render_template
@@ -27,6 +32,18 @@ DIFF_MULTIPLIERS: Dict[str, float] = {
     "T": 1_000_000_000_000,
     "P": 1_000_000_000_000_000,
 }
+PI_TEMP_PATHS: List[Tuple[Path, float]] = [
+    (Path("/sys/class/thermal/thermal_zone0/temp"), 1000),
+    (Path("/sys/class/hwmon/hwmon0/temp1_input"), 1000),
+]
+PI_FAN_INPUT_GLOBS = [
+    "/sys/devices/platform/*fan*/hwmon/hwmon*/fan1_input",
+    "/sys/class/hwmon/hwmon*/fan1_input",
+]
+PI_FAN_PWM_GLOBS = [
+    "/sys/devices/platform/*fan*/hwmon/hwmon*/pwm1",
+    "/sys/class/hwmon/hwmon*/pwm1",
+]
 
 
 def _safe_float(value):
@@ -77,6 +94,7 @@ SYSTEM_FIELDS = [
 def fetch_dashboard_data():
     markets: List[Dict[str, float]] = []
     system: Optional[Dict[str, object]] = None
+    pi_stats: Optional[Dict[str, object]] = None
     errors: List[str] = []
 
     try:
@@ -89,9 +107,15 @@ def fetch_dashboard_data():
     except RuntimeError as exc:
         errors.append(str(exc))
 
+    try:
+        pi_stats = _fetch_pi_stats()
+    except RuntimeError as exc:
+        errors.append(str(exc))
+
     return {
         "markets": markets,
         "system": system,
+        "pi": pi_stats,
         "error": "; ".join(errors) if errors else None,
     }
 
@@ -261,6 +285,127 @@ def _build_difficulty_highlight(payload: Dict[str, object]) -> Optional[Dict[str
     }
 
 
+def _fetch_pi_stats() -> Dict[str, object]:
+    try:
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        virtual_mem = psutil.virtual_memory()
+        disk_usage = psutil.disk_usage("/")
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("No se pudieron obtener los datos del Raspberry Pi") from exc
+
+    metrics: List[Dict[str, str]] = [
+        {
+            "id": "pi_cpu",
+            "label": "Uso CPU",
+            "value": f"{cpu_percent:.1f} %",
+        },
+        {
+            "id": "pi_ram",
+            "label": "RAM usada",
+            "value": f"{_format_bytes(virtual_mem.used)} / {_format_bytes(virtual_mem.total)} "
+            f"({virtual_mem.percent:.0f} %)",
+        },
+        {
+            "id": "pi_disk",
+            "label": "Disco raíz",
+            "value": f"{_format_bytes(disk_usage.used)} / {_format_bytes(disk_usage.total)} "
+            f"({disk_usage.percent:.0f} %)",
+        },
+    ]
+
+    temperature = _get_pi_temperature()
+    if temperature is not None:
+        metrics.append(
+            {
+                "id": "pi_temp",
+                "label": "Temperatura",
+                "value": f"{temperature:.1f} °C",
+            }
+        )
+
+    fan_speed = _get_pi_fan_speed()
+    if fan_speed:
+        metrics.append(
+            {
+                "id": "pi_fan",
+                "label": "Ventilador",
+                "value": fan_speed,
+            }
+        )
+
+    highlight = None
+    if temperature is not None:
+        highlight = {
+            "label": "Temperatura Raspberry Pi",
+            "value": f"{temperature:.1f} °C",
+        }
+
+    return {
+        "meta": {
+            "hostname": socket.gethostname(),
+        },
+        "metrics": metrics,
+        "highlight": highlight,
+    }
+
+
+def _get_pi_temperature() -> Optional[float]:
+    for path, divisor in PI_TEMP_PATHS:
+        try:
+            if path.exists():
+                raw = path.read_text().strip()
+                if raw:
+                    return float(raw) / divisor
+        except (OSError, ValueError):
+            continue
+
+    try:
+        output = subprocess.check_output(["vcgencmd", "measure_temp"], text=True).strip()
+        match = re.search(r"temp=([0-9.]+)", output)
+        if match:
+            return float(match.group(1))
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        return None
+
+    return None
+
+
+def _get_pi_fan_speed() -> Optional[str]:
+    for pattern in PI_FAN_INPUT_GLOBS:
+        for path in glob.glob(pattern):
+            try:
+                value = Path(path).read_text().strip()
+                if value:
+                    rpm = float(value)
+                    if rpm > 0:
+                        return f"{rpm:,.0f} RPM"
+            except (OSError, ValueError):
+                continue
+
+    for pattern in PI_FAN_PWM_GLOBS:
+        for path in glob.glob(pattern):
+            try:
+                value = Path(path).read_text().strip()
+                if not value:
+                    continue
+                duty = float(value)
+                percent = duty / 255 * 100
+                return f"{percent:.0f}% PWM"
+            except (OSError, ValueError):
+                continue
+
+    return None
+
+
+def _format_bytes(value: float) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(value)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+
+
 @app.route("/")
 def index():
     dashboard = fetch_dashboard_data()
@@ -269,6 +414,7 @@ def index():
         "index.html",
         initial_data=dashboard["markets"],
         initial_system=dashboard["system"],
+        initial_pi=dashboard["pi"],
         initial_error=dashboard["error"],
         updated_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -283,6 +429,7 @@ def prices():
         {
             "data": dashboard["markets"],
             "system": dashboard["system"],
+            "pi": dashboard["pi"],
             "error": dashboard["error"],
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
