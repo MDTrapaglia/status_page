@@ -71,8 +71,6 @@ SYSTEM_FIELDS = [
     ("sharesRejected", "Shares rechazados", lambda v: _format_number(v, 0)),
     ("wifiRSSI", "Señal WiFi", lambda v: _format_number(v, 0, " dBm")),
     ("uptimeSeconds", "Uptime", _format_duration),
-    ("stratumURL", "Pool principal", lambda v: str(v)),
-    ("version", "Firmware", lambda v: str(v)),
 ]
 
 
