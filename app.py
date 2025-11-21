@@ -129,7 +129,10 @@ def fetch_dashboard_data():
 
     try:
         pi_stats, pi_raw = _fetch_pi_stats()
-        _record_pi_history(pi_raw)
+        with PI_HISTORY_LOCK:
+            should_seed = not PI_HISTORY
+        if should_seed:
+            _record_pi_history(pi_raw)
     except RuntimeError as exc:
         errors.append(str(exc))
 
