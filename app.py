@@ -383,6 +383,21 @@ def _fetch_pi_stats() -> Tuple[Dict[str, object], Dict[str, Optional[float]]]:
         },
     ]
 
+    ssd_path = Path("/mnt/ssd")
+    if ssd_path.exists():
+        try:
+            ssd_usage = psutil.disk_usage(str(ssd_path))
+            metrics.append(
+                {
+                    "id": "pi_ssd",
+                    "label": "SSD /mnt/ssd",
+                    "value": f"{_format_bytes(ssd_usage.used)} / {_format_bytes(ssd_usage.total)} "
+                    f"({ssd_usage.percent:.0f} %)",
+                }
+            )
+        except OSError:
+            pass
+
     temperature = _get_pi_temperature()
     if temperature is not None:
         metrics.append(
