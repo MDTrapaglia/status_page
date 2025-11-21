@@ -99,6 +99,17 @@ SYSTEM_FIELDS = [
 ]
 
 
+def _calculate_energy_efficiency(payload: Dict[str, object]) -> Optional[float]:
+    power_watts = _safe_float(payload.get("power"))
+    hash_rate_gh = _safe_float(payload.get("hashRate"))
+    if power_watts is None or hash_rate_gh is None or hash_rate_gh <= 0:
+        return None
+    hash_rate_th = hash_rate_gh / 1000
+    if hash_rate_th <= 0:
+        return None
+    return power_watts / hash_rate_th
+
+
 def fetch_dashboard_data():
     markets: List[Dict[str, float]] = []
     system: Optional[Dict[str, object]] = None
@@ -220,6 +231,16 @@ def _fetch_system_snapshot() -> Dict[str, object]:
         if formatted is None:
             continue
         metrics.append({"id": key, "label": label, "value": formatted})
+
+    efficiency = _calculate_energy_efficiency(payload)
+    if efficiency is not None:
+        metrics.append(
+            {
+                "id": "energy_efficiency",
+                "label": "Eficiencia (J/TH)",
+                "value": f"{efficiency:.2f}",
+            }
+        )
 
     highlight = _build_difficulty_highlight(payload)
 
