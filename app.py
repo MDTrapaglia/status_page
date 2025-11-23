@@ -1,4 +1,5 @@
 import glob
+import json
 import re
 import socket
 import subprocess
@@ -52,6 +53,7 @@ PI_HISTORY_WINDOW = timedelta(hours=4)
 PI_HISTORY: Deque[Dict[str, object]] = deque()
 PI_HISTORY_LOCK = threading.Lock()
 PI_SAMPLE_INTERVAL_SECONDS = 60
+SESSION_STATE_PATH = Path("session_state.json")
 
 
 def _safe_float(value):
@@ -96,6 +98,7 @@ SYSTEM_FIELDS = [
     ("sharesRejected", "Shares rechazados", lambda v: _format_number(v, 0)),
     ("wifiRSSI", "Señal WiFi", lambda v: _format_number(v, 0, " dBm")),
     ("uptimeSeconds", "Uptime", _format_duration),
+    ("bestSessionDiff", "Mejor sesión (Diff)", lambda v: str(v)),
 ]
 
 
@@ -235,6 +238,23 @@ def _fetch_system_snapshot() -> Dict[str, object]:
             continue
         metrics.append({"id": key, "label": label, "value": formatted})
 
+    session_info = _update_session_tracking(payload.get("uptimeSeconds"))
+    if session_info:
+        metrics.append(
+            {
+                "id": "session_duration",
+                "label": "Duración sesión",
+                "value": _format_duration(session_info["current_seconds"]) or "—",
+            }
+        )
+        metrics.append(
+            {
+                "id": "session_total",
+                "label": "Tiempo total sesiones",
+                "value": _format_duration(session_info["total_seconds"]) or "—",
+            }
+        )
+
     efficiency = _calculate_energy_efficiency(payload)
     if efficiency is not None:
         metrics.append(
@@ -352,6 +372,50 @@ def _build_pi_history_series() -> Dict[str, List[Optional[float]]]:
         "cpu": cpu,
         "ram": ram,
         "fan": fan,
+    }
+
+
+def _load_session_state() -> Dict[str, float]:
+    if not SESSION_STATE_PATH.exists():
+        return {"total_completed_seconds": 0.0, "last_uptime": 0.0}
+    try:
+        with SESSION_STATE_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+            return {
+                "total_completed_seconds": float(data.get("total_completed_seconds", 0.0)),
+                "last_uptime": float(data.get("last_uptime", 0.0)),
+            }
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {"total_completed_seconds": 0.0, "last_uptime": 0.0}
+
+
+def _save_session_state(state: Dict[str, float]) -> None:
+    try:
+        with SESSION_STATE_PATH.open("w", encoding="utf-8") as handle:
+            json.dump(state, handle)
+    except OSError:
+        pass
+
+
+def _update_session_tracking(uptime_value) -> Optional[Dict[str, float]]:
+    uptime_seconds = _safe_float(uptime_value)
+    if uptime_seconds is None:
+        return None
+
+    state = _load_session_state()
+    total_completed = state.get("total_completed_seconds", 0.0)
+    last_uptime = state.get("last_uptime", 0.0)
+
+    if uptime_seconds < last_uptime:
+        total_completed += last_uptime
+
+    state["last_uptime"] = uptime_seconds
+    state["total_completed_seconds"] = total_completed
+    _save_session_state(state)
+
+    return {
+        "current_seconds": uptime_seconds,
+        "total_seconds": total_completed + uptime_seconds,
     }
 
 
