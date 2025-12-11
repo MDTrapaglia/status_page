@@ -440,6 +440,7 @@
       const portBlockReport = document.getElementById("port-block-report");
       const portBlockPlots = document.getElementById("port-block-plots");
       const portBlockError = document.getElementById("port-block-error");
+      const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
       let piChart = null;
       let piFullChart = null;
 
@@ -977,7 +978,6 @@
           updatePiChart(payload.pi_history);
           updatePiFullChart(payload.pi_history_full);
           renderQuote(payload.quote);
-          renderPortBlock(payload.port_block);
           renderError(payload.error || "");
           updatedAt.textContent = new Date(payload.updated_at).toLocaleTimeString("en-US", {
             hour: "2-digit",
@@ -986,6 +986,23 @@
           });
         } catch (err) {
           renderError(err.message);
+        }
+      }
+
+      async function refreshPortBlock() {
+        try {
+          const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
+          const response = await fetch(`/api/port-block${query}`);
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error || payload.port_block?.error || "Unknown error");
+          }
+          renderPortBlock(payload.port_block);
+        } catch (err) {
+          if (portBlockError) {
+            portBlockError.style.display = "block";
+            portBlockError.textContent = err.message;
+          }
         }
       }
 
@@ -1000,6 +1017,8 @@
 
       refresh();
       setInterval(refresh, 10000);
+      setInterval(refreshPortBlock, PORT_BLOCK_REFRESH_MS);
+      refreshPortBlock();
     </script>
   </body>
 </html>

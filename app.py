@@ -367,13 +367,13 @@ def _load_port_block_payload() -> Dict[str, object]:
     }
 
 
-def fetch_dashboard_data():
+def fetch_dashboard_data(include_port_block: bool = True):
     markets: List[Dict[str, float]] = []
     system: Optional[Dict[str, object]] = None
     pi_stats: Optional[Dict[str, object]] = None
     pi_raw: Optional[Dict[str, float]] = None
     errors: List[str] = []
-    port_block: Dict[str, object] = {}
+    port_block: Optional[Dict[str, object]] = None
 
     try:
         markets = fetch_market_data()
@@ -394,9 +394,10 @@ def fetch_dashboard_data():
     except RuntimeError as exc:
         errors.append(str(exc))
 
-    port_block = _load_port_block_payload()
-    if port_block.get("error"):
-        errors.append(str(port_block["error"]))
+    if include_port_block:
+        port_block = _load_port_block_payload()
+        if port_block.get("error"):
+            errors.append(str(port_block["error"]))
 
     if errors:
         logger.warning("Dashboard generated with errors: %s", "; ".join(errors))
@@ -410,7 +411,7 @@ def fetch_dashboard_data():
         "pi_history": _build_pi_history_series(),
         "pi_history_full": _build_pi_full_history_series(),
         "quote": {"text": quote} if quote else None,
-        "port_block": port_block,
+        "port_block": port_block if include_port_block else None,
         "error": "; ".join(errors) if errors else None,
     }
 
@@ -1074,7 +1075,7 @@ def index():
 
 @app.route("/api/prices")
 def prices():
-    dashboard = fetch_dashboard_data()
+    dashboard = fetch_dashboard_data(include_port_block=False)
     status_code = 200 if not dashboard["error"] else 207
     logger.info(
         "Request to /api/prices from %s (errors=%s)",
@@ -1095,6 +1096,27 @@ def prices():
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     ), status_code
+
+
+@app.route("/api/port-block")
+def api_port_block():
+    payload = _load_port_block_payload()
+    status_code = 200 if not payload.get("error") else 207
+    logger.info(
+        "Request to /api/port-block from %s (errors=%s)",
+        request.remote_addr or "unknown",
+        bool(payload.get("error")),
+    )
+    return (
+        jsonify(
+            {
+                "port_block": payload,
+                "error": payload.get("error"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        status_code,
+    )
 
 
 if __name__ == "__main__":
