@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Estado de Cripto</title>
+    <title>Crypto Status</title>
     <link
       rel="icon"
       type="image/svg+xml"
@@ -108,6 +108,26 @@
         position: relative;
       }
 
+      .chart-mini {
+        margin-top: 0.75rem;
+      }
+
+      .chart-label {
+        font-size: 0.8rem;
+        color: #cbd5f5;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .chart-wrapper.mini-chart {
+        height: clamp(150px, 28vh, 220px);
+        margin-top: 0.35rem;
+        border: 1px dashed rgba(148, 163, 184, 0.3);
+        border-radius: 0.65rem;
+        padding: 0.35rem;
+        background: rgba(15, 23, 42, 0.35);
+      }
+
       .metrics-group {
         margin-top: 1.25rem;
         padding: 1rem;
@@ -141,6 +161,55 @@
         color: #f8fafc;
       }
 
+      .sub-highlight {
+        margin-top: 0.9rem;
+        padding: 0.9rem 1rem;
+        border-radius: 0.65rem;
+        background: rgba(248, 113, 113, 0.12);
+        border: 1px solid rgba(248, 113, 113, 0.3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #fecdd3;
+        font-size: 0.95rem;
+      }
+
+      .sub-highlight .label {
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.7rem;
+        color: #f9a8d4;
+      }
+
+      .sub-highlight .value {
+        font-weight: 700;
+        color: #fef2f2;
+      }
+
+      .quote-card {
+        background: #0b1220;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        color: #e2e8f0;
+        padding: 1.4rem;
+        border-radius: 0.85rem;
+        box-shadow: 0 8px 22px rgba(10, 17, 30, 0.45);
+        max-width: 720px;
+      }
+
+      .quote-title {
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.9rem;
+        color: #93c5fd;
+        margin-bottom: 0.55rem;
+      }
+
+      .quote-text {
+        font-size: 1.15rem;
+        line-height: 1.6;
+        color: #f8fafc;
+      }
+
       .metric-row {
         display: flex;
         justify-content: space-between;
@@ -168,17 +237,95 @@
         background: rgba(251, 113, 133, 0.15);
         color: #fecdd3;
       }
+
+      .markdown {
+        margin-top: 1.25rem;
+        color: #e2e8f0;
+        line-height: 1.6;
+      }
+
+      .markdown h1,
+      .markdown h2,
+      .markdown h3 {
+        margin: 1rem 0 0.5rem;
+      }
+
+      .markdown p {
+        margin: 0.65rem 0;
+      }
+
+      .markdown code {
+        background: rgba(148, 163, 184, 0.15);
+        padding: 0.1rem 0.35rem;
+        border-radius: 0.35rem;
+        font-size: 0.9rem;
+      }
+
+      .markdown pre {
+        background: #0b1220;
+        padding: 0.9rem;
+        border-radius: 0.5rem;
+        overflow-x: auto;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+
+      .markdown table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.85rem 0;
+      }
+
+      .markdown th,
+      .markdown td {
+        padding: 0.45rem 0.5rem;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+      }
+
+      .plots-grid {
+        margin-top: 1.1rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.85rem;
+      }
+
+      .plot-card {
+        background: #0b1220;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 0.7rem;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .plot-card img {
+        width: 100%;
+        border-radius: 0.5rem;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: #0f172a;
+      }
+
+      .plot-title {
+        font-weight: 700;
+        color: #e2e8f0;
+      }
+
+      .plot-meta {
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   </head>
   <body>
     <div class="stack">
       <section class="card">
-        <h1>Mercados y acciones</h1>
+        <h1>Markets and stocks</h1>
         <div class="meta">
           <div>
-            Última actualización:
+            Last update:
             <span id="updated-at">{{ updated_at }}</span>
           </div>
         </div>
@@ -188,9 +335,11 @@
         <table>
           <thead>
             <tr>
-              <th>Activo</th>
-              <th>Precio (USD)</th>
-              <th>Variación 24h</th>
+              <th>Asset</th>
+              <th>Price (USD)</th>
+              <th>Change 24h</th>
+              <th>Change 7d</th>
+              <th>Change 30d</th>
             </tr>
           </thead>
           <tbody id="prices-body"></tbody>
@@ -205,6 +354,10 @@
         <div id="device-highlight" class="highlight" style="display: none">
           <div class="label" id="highlight-label"></div>
           <div class="value" id="highlight-value"></div>
+        </div>
+        <div class="sub-highlight" id="session-highlight" style="display: none">
+          <div class="label" id="session-highlight-label"></div>
+          <div class="value" id="session-highlight-value"></div>
         </div>
         <div class="metrics-group" id="device-metrics"></div>
       </section>
@@ -221,7 +374,28 @@
         <div class="chart-wrapper" id="pi-chart-wrapper" style="display: none">
           <canvas id="pi-chart"></canvas>
         </div>
+        <div class="chart-mini" id="pi-full-chart-container" style="display: none">
+          <div class="chart-label">Full history</div>
+          <div class="chart-wrapper mini-chart">
+            <canvas id="pi-full-chart"></canvas>
+          </div>
+        </div>
         <div class="metrics-group" id="pi-metrics"></div>
+      </section>
+
+      <section class="quote-card" id="quote-card" style="display: none">
+        <div class="quote-title">Quote of the day — A Course in Miracles</div>
+        <div class="quote-text" id="quote-text"></div>
+      </section>
+
+      <section class="card" id="port-block-card" style="display: none">
+        <div class="device-header">
+          <h2>UFW blocks</h2>
+          <div id="port-block-subtitle" class="meta"></div>
+        </div>
+        <div id="port-block-report" class="markdown"></div>
+        <div id="port-block-plots" class="plots-grid"></div>
+        <div id="port-block-error" class="error" style="display: none"></div>
       </section>
     </div>
 
@@ -231,9 +405,15 @@
       const initialSystem = {{ initial_system | tojson }};
       const initialPi = {{ initial_pi | tojson }};
       const initialPiHistory = {{ initial_pi_history | tojson }};
+      const initialPiHistoryFull = {{ initial_pi_history_full | tojson }};
+      const initialQuote = {{ initial_quote | tojson }};
+      const initialPortBlock = {{ initial_port_block | tojson }};
+      const authToken = new URLSearchParams(window.location.search).get("token");
       const pricesBody = document.getElementById("prices-body");
       const errorBox = document.getElementById("error");
       const updatedAt = document.getElementById("updated-at");
+      const quoteCard = document.getElementById("quote-card");
+      const quoteText = document.getElementById("quote-text");
       const deviceCard = document.getElementById("device-card");
       const deviceTitle = document.getElementById("device-title");
       const deviceSubtitle = document.getElementById("device-subtitle");
@@ -241,6 +421,9 @@
       const deviceHighlight = document.getElementById("device-highlight");
       const highlightLabel = document.getElementById("highlight-label");
       const highlightValue = document.getElementById("highlight-value");
+      const sessionHighlight = document.getElementById("session-highlight");
+      const sessionHighlightLabel = document.getElementById("session-highlight-label");
+      const sessionHighlightValue = document.getElementById("session-highlight-value");
       const piCard = document.getElementById("pi-card");
       const piTitle = document.getElementById("pi-title");
       const piSubtitle = document.getElementById("pi-subtitle");
@@ -250,23 +433,139 @@
       const piHighlightValue = document.getElementById("pi-highlight-value");
       const piChartWrapper = document.getElementById("pi-chart-wrapper");
       const piChartCanvas = document.getElementById("pi-chart");
+      const piFullChartContainer = document.getElementById("pi-full-chart-container");
+      const piFullChartCanvas = document.getElementById("pi-full-chart");
+      const portBlockCard = document.getElementById("port-block-card");
+      const portBlockSubtitle = document.getElementById("port-block-subtitle");
+      const portBlockReport = document.getElementById("port-block-report");
+      const portBlockPlots = document.getElementById("port-block-plots");
+      const portBlockError = document.getElementById("port-block-error");
       let piChart = null;
+      let piFullChart = null;
 
-      const formatter = new Intl.NumberFormat("es-ES", {
+      const formatter = new Intl.NumberFormat("en-US", {
         style: "currency",
         currency: "USD",
         maximumFractionDigits: 2,
       });
 
+      function formatChange(value) {
+        return Number.isFinite(value) ? `${value.toFixed(2)}%` : "—";
+      }
+
+      function changeClass(value) {
+        if (!Number.isFinite(value)) return "";
+        return value >= 0 ? "positive" : "negative";
+      }
+
+      function cacheBustedUrl(url, version) {
+        const params = [];
+        if (authToken) params.push(`token=${encodeURIComponent(authToken)}`);
+        if (version) params.push(`v=${encodeURIComponent(version)}`);
+        if (!params.length) return url;
+        const separator = url.includes("?") ? "&" : "?";
+        return `${url}${separator}${params.join("&")}`;
+      }
+
+      function stripPlotImages(markdown) {
+        if (typeof markdown !== "string") return "";
+        return markdown.replace(/!\[[^\]]*]\(ufw_plots[^)]+\)/gi, "");
+      }
+
+      if (window.marked) {
+        marked.setOptions({ mangle: false, headerIds: false });
+      }
+
+      function renderQuote(quotePayload) {
+        const text = quotePayload?.text;
+        if (text) {
+          quoteCard.style.display = "block";
+          quoteText.textContent = text;
+        } else {
+          quoteCard.style.display = "none";
+          quoteText.textContent = "";
+        }
+      }
+
+      function renderPortBlock(portBlock) {
+        if (!portBlock) {
+          portBlockCard.style.display = "none";
+          return;
+        }
+
+        const subtitleParts = [];
+        if (portBlock.report_updated_at) {
+          const updated = new Date(portBlock.report_updated_at);
+          if (!Number.isNaN(updated.getTime())) {
+            subtitleParts.push(`Updated ${updated.toLocaleString()}`);
+          }
+        }
+        portBlockSubtitle.textContent = subtitleParts.join(" • ");
+        portBlockSubtitle.style.display = subtitleParts.length ? "block" : "none";
+
+        const reportText = stripPlotImages(portBlock.report || "");
+        if (reportText.trim()) {
+          portBlockReport.style.display = "block";
+          if (window.marked && typeof marked.parse === "function") {
+            portBlockReport.innerHTML = marked.parse(reportText, {
+              baseUrl: "/port-block/",
+            });
+          } else {
+            portBlockReport.textContent = reportText;
+          }
+        } else {
+          portBlockReport.style.display = "none";
+          portBlockReport.innerHTML = "";
+        }
+
+        const plots = Array.isArray(portBlock.plots) ? portBlock.plots : [];
+        portBlockPlots.innerHTML = "";
+        if (plots.length) {
+          portBlockPlots.style.display = "grid";
+          plots.forEach((plot) => {
+            const wrapper = document.createElement("div");
+            wrapper.className = "plot-card";
+            const title = document.createElement("div");
+            title.className = "plot-title";
+            title.textContent = plot.label || plot.filename || "Plot";
+            const img = document.createElement("img");
+            const version = plot.updated_at || portBlock.report_updated_at || "";
+            img.src = cacheBustedUrl(plot.url, version);
+            img.alt = plot.label || plot.filename || "Plot";
+            const meta = document.createElement("div");
+            meta.className = "plot-meta";
+            const versionDate = version ? new Date(version) : null;
+            meta.textContent =
+              versionDate && !Number.isNaN(versionDate.getTime())
+                ? `Updated ${versionDate.toLocaleString()}`
+                : "";
+            wrapper.appendChild(title);
+            wrapper.appendChild(img);
+            if (meta.textContent) {
+              wrapper.appendChild(meta);
+            }
+            portBlockPlots.appendChild(wrapper);
+          });
+        } else {
+          portBlockPlots.style.display = "none";
+        }
+
+        const errorText = portBlock.error;
+        if (errorText) {
+          portBlockError.style.display = "block";
+          portBlockError.textContent = errorText;
+        } else {
+          portBlockError.style.display = "none";
+          portBlockError.textContent = "";
+        }
+
+        const hasContent = reportText.trim() || plots.length || errorText;
+        portBlockCard.style.display = hasContent ? "block" : "none";
+      }
+
       function renderRows(items) {
         pricesBody.innerHTML = "";
         items.forEach((item) => {
-          const changeClass =
-            item.change === null || item.change === undefined
-              ? ""
-              : item.change >= 0
-              ? "positive"
-              : "negative";
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>${item.name}</td>
@@ -275,24 +574,38 @@
                 ? "—"
                 : formatter.format(item.price)
             }</td>
-            <td class="change ${changeClass}">${
-            item.change === null || item.change === undefined
-              ? "—"
-              : item.change.toFixed(2) + "%"
-          }</td>
+            <td class="change ${changeClass(item.change)}">${formatChange(item.change)}</td>
+            <td class="change ${changeClass(item.change_7d)}">${formatChange(item.change_7d)}</td>
+            <td class="change ${changeClass(item.change_30d)}">${formatChange(item.change_30d)}</td>
           `;
           pricesBody.appendChild(row);
         });
       }
 
       function renderMetricsCard(data, elements) {
-        const { card, titleEl, subtitleEl, metricsEl, highlightEl, highlightLabelEl, highlightValueEl, defaultTitle, formatSubtitle } = elements;
+        const {
+          card,
+          titleEl,
+          subtitleEl,
+          metricsEl,
+          highlightEl,
+          highlightLabelEl,
+          highlightValueEl,
+          subHighlightEl,
+          subHighlightLabelEl,
+          subHighlightValueEl,
+          subHighlightKey,
+          defaultTitle,
+          formatSubtitle,
+        } = elements;
         const hasMetrics = Array.isArray(data?.metrics) && data.metrics.length > 0;
         const hasHighlight = !!(data?.highlight && data.highlight.value);
+        const subHighlight = subHighlightKey ? data?.[subHighlightKey] : null;
 
         if (!hasMetrics && !hasHighlight) {
           card.style.display = "none";
           if (metricsEl) metricsEl.innerHTML = "";
+          if (subHighlightEl) subHighlightEl.style.display = "none";
           return;
         }
 
@@ -321,6 +634,20 @@
           }
         }
 
+        if (subHighlightEl) {
+          if (subHighlight && subHighlight.value) {
+            subHighlightEl.style.display = "flex";
+            if (subHighlightLabelEl) {
+              subHighlightLabelEl.textContent = subHighlight.label || "";
+            }
+            if (subHighlightValueEl) {
+              subHighlightValueEl.textContent = subHighlight.value;
+            }
+          } else {
+            subHighlightEl.style.display = "none";
+          }
+        }
+
         if (metricsEl) {
           metricsEl.innerHTML = "";
           (data?.metrics || []).forEach((metric) => {
@@ -344,6 +671,10 @@
           highlightEl: deviceHighlight,
           highlightLabelEl: highlightLabel,
           highlightValueEl: highlightValue,
+          subHighlightEl: sessionHighlight,
+          subHighlightLabelEl: sessionHighlightLabel,
+          subHighlightValueEl: sessionHighlightValue,
+          subHighlightKey: "session_highlight",
           defaultTitle: "AxeOS",
           formatSubtitle(meta) {
             const parts = [];
@@ -388,6 +719,57 @@
         return points;
       }
 
+      function buildPiSeries(points) {
+        return {
+          labels: points.map((point) => point.x),
+          tempData: points.map((point) => ({ x: point.x, y: point.temperature })),
+          cpuData: points.map((point) => ({ x: point.x, y: point.cpu })),
+          ramData: points.map((point) => ({ x: point.x, y: point.ram })),
+          fanData: points.map((point) => ({ x: point.x, y: point.fan })),
+        };
+      }
+
+      function createPiDatasets(series) {
+        return [
+          {
+            label: "Temp (°C)",
+            data: series.tempData,
+            borderColor: "#fb923c",
+            backgroundColor: "rgba(251, 146, 60, 0.2)",
+            yAxisID: "temp",
+            spanGaps: true,
+            tension: 0.3,
+          },
+          {
+            label: "CPU (%)",
+            data: series.cpuData,
+            borderColor: "#0ea5e9",
+            backgroundColor: "rgba(14, 165, 233, 0.2)",
+            yAxisID: "percent",
+            spanGaps: true,
+            tension: 0.3,
+          },
+          {
+            label: "RAM (%)",
+            data: series.ramData,
+            borderColor: "#22c55e",
+            backgroundColor: "rgba(34, 197, 94, 0.2)",
+            yAxisID: "percent",
+            spanGaps: true,
+            tension: 0.3,
+          },
+          {
+            label: "Fan (%)",
+            data: series.fanData,
+            borderColor: "#f472b6",
+            backgroundColor: "rgba(244, 114, 182, 0.2)",
+            yAxisID: "percent",
+            spanGaps: true,
+            tension: 0.3,
+          },
+        ];
+      }
+
       function updatePiChart(history) {
         if (!piChartCanvas || !piChartWrapper) return;
         const points = normalizeHistory(history);
@@ -402,56 +784,16 @@
         }
 
         piChartWrapper.style.display = "block";
-        const labels = points.map((point) => point.x);
-        const tempData = points.map((point) => ({ x: point.x, y: point.temperature }));
-        const cpuData = points.map((point) => ({ x: point.x, y: point.cpu }));
-        const ramData = points.map((point) => ({ x: point.x, y: point.ram }));
-        const fanData = points.map((point) => ({ x: point.x, y: point.fan }));
+        const series = buildPiSeries(points);
+        const datasets = createPiDatasets(series);
 
         if (!piChart) {
           const ctx = piChartCanvas.getContext("2d");
           piChart = new Chart(ctx, {
             type: "line",
             data: {
-              labels,
-              datasets: [
-                {
-                  label: "Temp (°C)",
-                  data: tempData,
-                  borderColor: "#fb923c",
-                  backgroundColor: "rgba(251, 146, 60, 0.2)",
-                  yAxisID: "temp",
-                  spanGaps: true,
-                  tension: 0.3,
-                },
-                {
-                  label: "CPU (%)",
-                  data: cpuData,
-                  borderColor: "#0ea5e9",
-                  backgroundColor: "rgba(14, 165, 233, 0.2)",
-                  yAxisID: "percent",
-                  spanGaps: true,
-                  tension: 0.3,
-                },
-                {
-                  label: "RAM (%)",
-                  data: ramData,
-                  borderColor: "#22c55e",
-                  backgroundColor: "rgba(34, 197, 94, 0.2)",
-                  yAxisID: "percent",
-                  spanGaps: true,
-                  tension: 0.3,
-                },
-                {
-                  label: "Ventilador (%)",
-                  data: fanData,
-                  borderColor: "#f472b6",
-                  backgroundColor: "rgba(244, 114, 182, 0.2)",
-                  yAxisID: "percent",
-                  spanGaps: true,
-                  tension: 0.3,
-                },
-              ],
+              labels: series.labels,
+              datasets,
             },
             options: {
               responsive: true,
@@ -492,12 +834,120 @@
             },
           });
         } else {
-          piChart.data.labels = labels;
-          piChart.data.datasets[0].data = tempData;
-          piChart.data.datasets[1].data = cpuData;
-          piChart.data.datasets[2].data = ramData;
-          piChart.data.datasets[3].data = fanData;
+          piChart.data.labels = series.labels;
+          piChart.data.datasets.forEach((dataset, idx) => {
+            dataset.data = datasets[idx].data;
+          });
           piChart.update("none");
+        }
+      }
+
+      function updatePiFullChart(history) {
+        if (!piFullChartCanvas || !piFullChartContainer) return;
+        const labels = Array.isArray(history?.labels) ? history.labels : [];
+        if (!labels.length) {
+          piFullChartContainer.style.display = "none";
+          if (piFullChart) {
+            piFullChart.data.labels = [];
+            piFullChart.data.datasets.forEach((dataset) => (dataset.data = []));
+            piFullChart.update("none");
+          }
+          return;
+        }
+        if (piFullChart && piFullChart.data?.labels) {
+          const lastIncoming = labels[labels.length - 1];
+          const lastChart = piFullChart.data.labels[piFullChart.data.labels.length - 1];
+          const lastIncomingTs = lastIncoming ? new Date(lastIncoming).getTime() : null;
+          const lastChartTs =
+            lastChart instanceof Date ? lastChart.getTime() : new Date(lastChart).getTime();
+          if (
+            lastIncomingTs &&
+            lastChartTs &&
+            labels.length === piFullChart.data.labels.length &&
+            lastIncomingTs === lastChartTs
+          ) {
+            piFullChartContainer.style.display = "block";
+            return;
+          }
+        }
+
+        const points = normalizeHistory(history);
+        if (!points.length) {
+          piFullChartContainer.style.display = "none";
+          if (piFullChart) {
+            piFullChart.data.labels = [];
+            piFullChart.data.datasets.forEach((dataset) => (dataset.data = []));
+            piFullChart.update("none");
+          }
+          return;
+        }
+
+        piFullChartContainer.style.display = "block";
+        const series = buildPiSeries(points);
+        const datasets = createPiDatasets(series);
+
+        if (!piFullChart) {
+          const ctx = piFullChartCanvas.getContext("2d");
+          piFullChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: series.labels,
+              datasets,
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              parsing: false,
+              interaction: {
+                mode: "nearest",
+                intersect: false,
+              },
+              elements: {
+                point: { radius: 0 },
+              },
+              plugins: {
+                legend: {
+                  labels: { color: "#cbd5f5", boxWidth: 12 },
+                },
+                decimation: {
+                  enabled: true,
+                  algorithm: "lttb",
+                  samples: 300,
+                },
+              },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { displayFormats: { hour: "dd HH:mm" } },
+                  ticks: { color: "#94a3b8" },
+                  grid: { color: "rgba(148, 163, 184, 0.15)" },
+                },
+                temp: {
+                  type: "linear",
+                  position: "left",
+                  title: { display: true, text: "°C", color: "#94a3b8" },
+                  ticks: { color: "#94a3b8" },
+                  grid: { color: "rgba(148, 163, 184, 0.15)" },
+                },
+                percent: {
+                  type: "linear",
+                  position: "right",
+                  min: 0,
+                  max: 100,
+                  title: { display: true, text: "%", color: "#94a3b8" },
+                  ticks: { color: "#94a3b8" },
+                  grid: { drawOnChartArea: false },
+                },
+              },
+            },
+          });
+        } else {
+          piFullChart.data.labels = series.labels;
+          piFullChart.data.datasets.forEach((dataset, idx) => {
+            dataset.data = datasets[idx].data;
+          });
+          piFullChart.update("none");
         }
       }
 
@@ -513,22 +963,27 @@
 
       async function refresh() {
         try {
-          const response = await fetch("/api/prices");
+          const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
+          const response = await fetch(`/api/prices${query}`);
           const payload = await response.json();
 
           if (!response.ok) {
-            throw new Error(payload.error || "Error desconocido");
+            throw new Error(payload.error || "Unknown error");
           }
 
           renderRows(payload.data || []);
           renderSystem(payload.system);
           renderPi(payload.pi);
           updatePiChart(payload.pi_history);
+          updatePiFullChart(payload.pi_history_full);
+          renderQuote(payload.quote);
+          renderPortBlock(payload.port_block);
           renderError(payload.error || "");
-          updatedAt.textContent = new Date(payload.updated_at).toLocaleTimeString(
-            "es-ES",
-            { hour: "2-digit", minute: "2-digit", second: "2-digit" }
-          );
+          updatedAt.textContent = new Date(payload.updated_at).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
         } catch (err) {
           renderError(err.message);
         }
@@ -538,6 +993,9 @@
       renderSystem(initialSystem);
       renderPi(initialPi);
       updatePiChart(initialPiHistory);
+      updatePiFullChart(initialPiHistoryFull);
+      renderQuote(initialQuote);
+      renderPortBlock(initialPortBlock);
       renderError(initialError);
 
       refresh();
