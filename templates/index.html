@@ -241,49 +241,6 @@
         color: #fecdd3;
       }
 
-      .markdown {
-        margin-top: 1.25rem;
-        color: #e2e8f0;
-        line-height: 1.6;
-      }
-
-      .markdown h1,
-      .markdown h2,
-      .markdown h3 {
-        margin: 1rem 0 0.5rem;
-      }
-
-      .markdown p {
-        margin: 0.65rem 0;
-      }
-
-      .markdown code {
-        background: rgba(148, 163, 184, 0.15);
-        padding: 0.1rem 0.35rem;
-        border-radius: 0.35rem;
-        font-size: 0.9rem;
-      }
-
-      .markdown pre {
-        background: #0b1220;
-        padding: 0.9rem;
-        border-radius: 0.5rem;
-        overflow-x: auto;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-      }
-
-      .markdown table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 0.85rem 0;
-      }
-
-      .markdown th,
-      .markdown td {
-        padding: 0.45rem 0.5rem;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-      }
-
       .plots-grid {
         margin-top: 1.1rem;
         display: grid;
@@ -345,7 +302,6 @@
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   </head>
   <body>
     <div class="stack">
@@ -423,7 +379,6 @@
           <h2>UFW blocks</h2>
           <div id="port-block-subtitle" class="meta"></div>
         </div>
-        <div id="port-block-report" class="markdown"></div>
         <div id="port-block-plots" class="plots-grid"></div>
         <div id="port-block-error" class="error" style="display: none"></div>
       </section>
@@ -467,7 +422,6 @@
       const piFullChartCanvas = document.getElementById("pi-full-chart");
       const portBlockCard = document.getElementById("port-block-card");
       const portBlockSubtitle = document.getElementById("port-block-subtitle");
-      const portBlockReport = document.getElementById("port-block-report");
       const portBlockPlots = document.getElementById("port-block-plots");
       const portBlockError = document.getElementById("port-block-error");
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
@@ -498,15 +452,6 @@
         return `${url}${separator}${params.join("&")}`;
       }
 
-      function stripPlotImages(markdown) {
-        if (typeof markdown !== "string") return "";
-        return markdown.replace(/!\[[^\]]*]\(ufw_plots[^)]+\)/gi, "");
-      }
-
-      if (window.marked) {
-        marked.setOptions({ mangle: false, headerIds: false });
-      }
-
       function renderQuote(quotePayload) {
         const text = quotePayload?.text;
         if (text) {
@@ -525,29 +470,14 @@
         }
 
         const subtitleParts = [];
-        if (portBlock.report_updated_at) {
-          const updated = new Date(portBlock.report_updated_at);
+        if (portBlock.updated_at) {
+          const updated = new Date(portBlock.updated_at);
           if (!Number.isNaN(updated.getTime())) {
             subtitleParts.push(`Updated ${updated.toLocaleString()}`);
           }
         }
         portBlockSubtitle.textContent = subtitleParts.join(" • ");
         portBlockSubtitle.style.display = subtitleParts.length ? "block" : "none";
-
-        const reportText = stripPlotImages(portBlock.report || "");
-        if (reportText.trim()) {
-          portBlockReport.style.display = "block";
-          if (window.marked && typeof marked.parse === "function") {
-            portBlockReport.innerHTML = marked.parse(reportText, {
-              baseUrl: "/port-block/",
-            });
-          } else {
-            portBlockReport.textContent = reportText;
-          }
-        } else {
-          portBlockReport.style.display = "none";
-          portBlockReport.innerHTML = "";
-        }
 
         const plots = Array.isArray(portBlock.plots) ? portBlock.plots : [];
         portBlockPlots.innerHTML = "";
@@ -562,7 +492,7 @@
             title.className = "plot-title";
             title.textContent = plot.label || plot.filename || "Plot";
             const img = document.createElement("img");
-            const version = plot.updated_at || portBlock.report_updated_at || "";
+            const version = plot.updated_at || portBlock.updated_at || "";
             img.src = cacheBustedUrl(plot.url, version);
             img.alt = plot.label || plot.filename || "Plot";
             const meta = document.createElement("div");
@@ -592,7 +522,7 @@
           portBlockError.textContent = "";
         }
 
-        const hasContent = reportText.trim() || plots.length || errorText;
+        const hasContent = plots.length || errorText;
         portBlockCard.style.display = hasContent ? "block" : "none";
       }
 

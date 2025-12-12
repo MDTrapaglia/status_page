@@ -26,9 +26,9 @@ app = Flask(__name__)
 LOG_PATH = Path("status_page.log")
 AUTH_TOKEN = "gaelito2025"
 PORT_BLOCK_ROOT = Path("/home/mtrapaglia/projects/port_block")
-PORT_BLOCK_REPORT = PORT_BLOCK_ROOT / "ufw_report.md"
 PORT_BLOCK_PLOTS = PORT_BLOCK_ROOT / "ufw_plots"
 PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg"}
+PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
 
 
 def _configure_logging():
@@ -327,16 +327,20 @@ def _calculate_energy_efficiency(payload: Dict[str, object]) -> Optional[float]:
 
 def _load_port_block_payload() -> Dict[str, object]:
     plots: List[Dict[str, object]] = []
-    report_text: Optional[str] = None
-    report_updated_at: Optional[str] = None
     errors: List[str] = []
+    latest_plot_time: Optional[datetime] = None
 
     try:
         for path in sorted(PORT_BLOCK_PLOTS.glob("*")):
             if path.suffix.lower() not in PORT_BLOCK_ALLOWED_SUFFIXES:
                 continue
+            if path.stem in PORT_BLOCK_EXCLUDED_PLOTS:
+                continue
             try:
-                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+                mtime_dt = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+                mtime = mtime_dt.isoformat()
+                if latest_plot_time is None or mtime_dt > latest_plot_time:
+                    latest_plot_time = mtime_dt
             except OSError:
                 mtime = None
             plots.append(
@@ -350,19 +354,9 @@ def _load_port_block_payload() -> Dict[str, object]:
     except OSError as exc:
         errors.append(f"Could not read plots: {exc}")
 
-    try:
-        if PORT_BLOCK_REPORT.exists():
-            report_text = PORT_BLOCK_REPORT.read_text(encoding="utf-8")
-            report_updated_at = datetime.fromtimestamp(PORT_BLOCK_REPORT.stat().st_mtime, tz=timezone.utc).isoformat()
-        else:
-            errors.append("UFW report not found")
-    except OSError as exc:
-        errors.append(f"Could not read UFW report: {exc}")
-
     return {
-        "report": report_text,
-        "report_updated_at": report_updated_at,
         "plots": plots,
+        "updated_at": latest_plot_time.isoformat() if latest_plot_time else None,
         "error": "; ".join(errors) if errors else None,
     }
 
