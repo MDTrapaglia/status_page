@@ -29,6 +29,8 @@ PORT_BLOCK_ROOT = Path("/home/mtrapaglia/projects/port_block")
 PORT_BLOCK_PLOTS = PORT_BLOCK_ROOT / "ufw_plots"
 PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg"}
 PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
+CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
+CONNECTIVITY_TEST_TIMEOUT = 2.0
 
 
 def _configure_logging():
@@ -144,6 +146,16 @@ def _format_duration(value: Optional[float]) -> Optional[str]:
         parts.append(f"{hours}h")
     parts.append(f"{minutes}m")
     return " ".join(parts)
+
+
+def _check_internet_connectivity() -> bool:
+    for host, port in CONNECTIVITY_TEST_TARGETS:
+        try:
+            with socket.create_connection((host, port), CONNECTIVITY_TEST_TIMEOUT):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _load_cached_quotes() -> List[str]:
@@ -365,7 +377,7 @@ def fetch_dashboard_data(include_port_block: bool = True):
     markets: List[Dict[str, float]] = []
     system: Optional[Dict[str, object]] = None
     pi_stats: Optional[Dict[str, object]] = None
-    pi_raw: Optional[Dict[str, float]] = None
+    pi_raw: Optional[Dict[str, object]] = None
     errors: List[str] = []
     port_block: Optional[Dict[str, object]] = None
 
@@ -380,9 +392,9 @@ def fetch_dashboard_data(include_port_block: bool = True):
         errors.append(str(exc))
 
     try:
-        pi_stats, pi_raw = _fetch_pi_stats()
         with PI_HISTORY_LOCK:
             should_seed = not PI_HISTORY
+        pi_stats, pi_raw = _fetch_pi_stats(check_connectivity=should_seed)
         if should_seed:
             _record_pi_history(pi_raw)
     except RuntimeError as exc:
@@ -658,6 +670,15 @@ def _load_pi_full_history_from_disk() -> None:
                     pruned_on_load += 1
                     continue
 
+                online_raw = payload.get("online")
+                online: Optional[bool]
+                if isinstance(online_raw, bool):
+                    online = online_raw
+                elif online_raw in (0, 1):
+                    online = bool(online_raw)
+                else:
+                    online = None
+
                 entries.append(
                     {
                         "ts": ts,
@@ -665,6 +686,7 @@ def _load_pi_full_history_from_disk() -> None:
                         "ram": _safe_float(payload.get("ram")),
                         "temperature": _safe_float(payload.get("temperature")),
                         "fan": _safe_float(payload.get("fan")),
+                        "online": online,
                     }
                 )
     except OSError as exc:
@@ -694,6 +716,7 @@ def _persist_pi_full_history_entry(entry: Dict[str, object]) -> None:
         "ram": entry.get("ram"),
         "temperature": entry.get("temperature"),
         "fan": entry.get("fan"),
+        "online": entry.get("online"),
     }
     try:
         with PI_FULL_HISTORY_PATH.open("a", encoding="utf-8") as handle:
@@ -711,6 +734,7 @@ def _serialize_pi_entry(entry: Dict[str, object]) -> Dict[str, object]:
         "ram": entry.get("ram"),
         "temperature": entry.get("temperature"),
         "fan": entry.get("fan"),
+        "online": entry.get("online"),
     }
 
 
@@ -730,6 +754,7 @@ def _build_pi_history_payload(entries) -> Dict[str, List[Optional[float]]]:
     cpu: List[Optional[float]] = []
     ram: List[Optional[float]] = []
     fan: List[Optional[float]] = []
+    online: List[Optional[bool]] = []
 
     for entry in entries:
         ts = entry.get("ts")
@@ -740,6 +765,7 @@ def _build_pi_history_payload(entries) -> Dict[str, List[Optional[float]]]:
         cpu.append(entry.get("cpu"))
         ram.append(entry.get("ram"))
         fan.append(entry.get("fan"))
+        online.append(entry.get("online"))
 
     return {
         "labels": labels,
@@ -747,10 +773,11 @@ def _build_pi_history_payload(entries) -> Dict[str, List[Optional[float]]]:
         "cpu": cpu,
         "ram": ram,
         "fan": fan,
+        "online": online,
     }
 
 
-def _record_pi_history(point: Optional[Dict[str, Optional[float]]]):
+def _record_pi_history(point: Optional[Dict[str, object]]):
     if not point:
         return
     now = datetime.now(timezone.utc)
@@ -842,7 +869,7 @@ def _update_session_tracking(uptime_value) -> Optional[Dict[str, float]]:
     }
 
 
-def _fetch_pi_stats() -> Tuple[Dict[str, object], Dict[str, Optional[float]]]:
+def _fetch_pi_stats(check_connectivity: bool = False) -> Tuple[Dict[str, object], Dict[str, Optional[float]]]:
     try:
         cpu_percent = psutil.cpu_percent(interval=0.1)
         virtual_mem = psutil.virtual_memory()
@@ -850,6 +877,13 @@ def _fetch_pi_stats() -> Tuple[Dict[str, object], Dict[str, Optional[float]]]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not read Raspberry Pi stats: %s", exc)
         raise RuntimeError("Could not read Raspberry Pi stats") from exc
+
+    online_status: Optional[bool] = None
+    if check_connectivity:
+        try:
+            online_status = _check_internet_connectivity()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Connectivity check failed: %s", exc)
 
     metrics: List[Dict[str, str]] = [
         {
@@ -926,6 +960,7 @@ def _fetch_pi_stats() -> Tuple[Dict[str, object], Dict[str, Optional[float]]]:
         "ram": virtual_mem.percent,
         "temperature": temperature,
         "fan": fan_percent,
+        "online": online_status,
     }
 
     return display, raw_point
@@ -992,7 +1027,7 @@ def _format_bytes(value: float) -> str:
 def _pi_sampler_loop():
     while True:
         try:
-            _, raw_point = _fetch_pi_stats()
+            _, raw_point = _fetch_pi_stats(check_connectivity=True)
             _record_pi_history(raw_point)
         except RuntimeError as exc:
             logger.warning("Error during periodic Pi sampling: %s", exc)

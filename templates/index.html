@@ -131,6 +131,43 @@
         background: rgba(15, 23, 42, 0.35);
       }
 
+      .status-legend {
+        display: none;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        margin-top: 0.5rem;
+        color: #cbd5f5;
+        font-size: 0.9rem;
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.6rem;
+        border-radius: 0.5rem;
+        background: rgba(15, 23, 42, 0.55);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+      }
+
+      .legend-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 0.35rem;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+      }
+
+      .legend-swatch.offline {
+        background: rgba(239, 68, 68, 0.3);
+        border-color: rgba(248, 113, 113, 0.8);
+      }
+
+      .legend-swatch.power {
+        background: rgba(148, 163, 184, 0.25);
+        border-color: rgba(148, 163, 184, 0.8);
+      }
+
       .metrics-group {
         margin-top: 1.25rem;
         padding: 1rem;
@@ -366,6 +403,16 @@
             <canvas id="pi-full-chart"></canvas>
           </div>
         </div>
+        <div class="status-legend" id="pi-status-legend">
+          <div class="legend-item" id="legend-offline">
+            <span class="legend-swatch offline"></span>
+            <span>Sin internet</span>
+          </div>
+          <div class="legend-item" id="legend-power">
+            <span class="legend-swatch power"></span>
+            <span>Sin tensión / script detenido</span>
+          </div>
+        </div>
         <div class="metrics-group" id="pi-metrics"></div>
       </section>
 
@@ -420,6 +467,9 @@
       const piChartCanvas = document.getElementById("pi-chart");
       const piFullChartContainer = document.getElementById("pi-full-chart-container");
       const piFullChartCanvas = document.getElementById("pi-full-chart");
+      const piStatusLegend = document.getElementById("pi-status-legend");
+      const legendOffline = document.getElementById("legend-offline");
+      const legendPower = document.getElementById("legend-power");
       const portBlockCard = document.getElementById("port-block-card");
       const portBlockSubtitle = document.getElementById("port-block-subtitle");
       const portBlockPlots = document.getElementById("port-block-plots");
@@ -427,6 +477,11 @@
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
       let piChart = null;
       let piFullChart = null;
+
+      const STATUS_COLORS = {
+        offline: "rgba(239, 68, 68, 0.18)",
+        power: "rgba(148, 163, 184, 0.18)",
+      };
 
       const formatter = new Intl.NumberFormat("en-US", {
         style: "currency",
@@ -441,6 +496,128 @@
       function changeClass(value) {
         if (!Number.isFinite(value)) return "";
         return value >= 0 ? "positive" : "negative";
+      }
+
+      const statusOverlayPlugin = {
+        id: "statusOverlay",
+        beforeDatasetsDraw(chart) {
+          const overlay = chart.$statusOverlays;
+          if (!overlay) return;
+          const { ctx, chartArea, scales } = chart;
+          if (!ctx || !chartArea || !scales?.x) return;
+          const top = chartArea.top;
+          const bottom = chartArea.bottom;
+          ctx.save();
+
+          const drawSpan = (span, color) => {
+            if (!span?.start || !span?.end) return;
+            const startX = scales.x.getPixelForValue(span.start);
+            const endX = scales.x.getPixelForValue(span.end);
+            if (!Number.isFinite(startX) || !Number.isFinite(endX)) return;
+            const left = Math.min(startX, endX);
+            const width = Math.abs(endX - startX);
+            if (width < 2) return;
+            ctx.fillStyle = color;
+            ctx.fillRect(left, top, width, bottom - top);
+          };
+
+          (overlay.powerSpans || []).forEach((span) => drawSpan(span, STATUS_COLORS.power));
+          (overlay.offlineSpans || []).forEach((span) => drawSpan(span, STATUS_COLORS.offline));
+          ctx.restore();
+        },
+      };
+
+      Chart.register(statusOverlayPlugin);
+
+      function median(values) {
+        if (!Array.isArray(values) || !values.length) return null;
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        if (sorted.length % 2 === 0) {
+          return (sorted[mid - 1] + sorted[mid]) / 2;
+        }
+        return sorted[mid];
+      }
+
+      function computeExpectedIntervalMs(points) {
+        if (!Array.isArray(points) || points.length < 2) return 60000;
+        const gaps = [];
+        for (let i = 1; i < points.length; i += 1) {
+          const delta = points[i].x - points[i - 1].x;
+          if (Number.isFinite(delta) && delta > 0) {
+            gaps.push(delta);
+          }
+        }
+        const med = median(gaps);
+        if (Number.isFinite(med) && med > 0) return med;
+        return 60000;
+      }
+
+      function buildPowerSpans(points, expectedMs) {
+        if (!Array.isArray(points) || points.length < 2) return [];
+        const spans = [];
+        const threshold = Math.max(expectedMs * 2.5, expectedMs + 90000);
+        for (let i = 1; i < points.length; i += 1) {
+          const gap = points[i].x - points[i - 1].x;
+          if (gap > threshold) {
+            spans.push({ start: points[i - 1].x, end: points[i].x });
+          }
+        }
+        return spans;
+      }
+
+      function buildOfflineSpans(points, expectedMs) {
+        if (!Array.isArray(points) || !points.length) return [];
+        const spans = [];
+        let currentStart = null;
+        for (let i = 0; i < points.length; i += 1) {
+          const online = points[i].online;
+          if (online === false && !currentStart) {
+            currentStart = points[i].x;
+          }
+          if ((online !== false || i === points.length - 1) && currentStart) {
+            const end =
+              online === false && i === points.length - 1
+                ? new Date(points[i].x.getTime() + expectedMs)
+                : points[i].x;
+            spans.push({ start: currentStart, end });
+            currentStart = null;
+          }
+        }
+        return spans;
+      }
+
+      function buildStatusOverlay(points) {
+        if (!Array.isArray(points) || !points.length) {
+          return { offlineSpans: [], powerSpans: [] };
+        }
+        const expectedMs = computeExpectedIntervalMs(points);
+        return {
+          offlineSpans: buildOfflineSpans(points, expectedMs),
+          powerSpans: buildPowerSpans(points, expectedMs),
+        };
+      }
+
+      function applyStatusOverlay(chart, overlay) {
+        if (!chart) return;
+        chart.$statusOverlays = overlay;
+      }
+
+      function updateStatusLegend(overlay) {
+        if (!piStatusLegend) return;
+        const hasOffline = overlay?.offlineSpans?.length;
+        const hasPower = overlay?.powerSpans?.length;
+        if (hasOffline || hasPower) {
+          piStatusLegend.style.display = "flex";
+          if (legendOffline) {
+            legendOffline.style.opacity = hasOffline ? "1" : "0.55";
+          }
+          if (legendPower) {
+            legendPower.style.opacity = hasPower ? "1" : "0.55";
+          }
+        } else {
+          piStatusLegend.style.display = "none";
+        }
       }
 
       function cacheBustedUrl(url, version) {
@@ -671,12 +848,16 @@
         for (let i = 0; i < length; i += 1) {
           const label = safe.labels[i];
           if (!label) continue;
+          const onlineRaw = Array.isArray(safe.online) ? safe.online[i] : undefined;
+          const online =
+            onlineRaw === true ? true : onlineRaw === false ? false : onlineRaw === 0 ? false : null;
           points.push({
             x: new Date(label),
             temperature: safe.temperature?.[i] ?? null,
             cpu: safe.cpu?.[i] ?? null,
             ram: safe.ram?.[i] ?? null,
             fan: safe.fan?.[i] ?? null,
+            online,
           });
         }
         return points;
@@ -741,14 +922,17 @@
           if (piChart) {
             piChart.data.labels = [];
             piChart.data.datasets.forEach((dataset) => (dataset.data = []));
+            applyStatusOverlay(piChart, { offlineSpans: [], powerSpans: [] });
             piChart.update("none");
           }
+          updateStatusLegend({ offlineSpans: [], powerSpans: [] });
           return;
         }
 
         piChartWrapper.style.display = "block";
         const series = buildPiSeries(points);
         const datasets = createPiDatasets(series);
+        const overlay = buildStatusOverlay(points);
 
         if (!piChart) {
           const ctx = piChartCanvas.getContext("2d");
@@ -796,13 +980,17 @@
               },
             },
           });
+          applyStatusOverlay(piChart, overlay);
+          piChart.update("none");
         } else {
           piChart.data.labels = series.labels;
           piChart.data.datasets.forEach((dataset, idx) => {
             dataset.data = datasets[idx].data;
           });
+          applyStatusOverlay(piChart, overlay);
           piChart.update("none");
         }
+        updateStatusLegend(overlay);
       }
 
       function updatePiFullChart(history) {
@@ -813,6 +1001,7 @@
           if (piFullChart) {
             piFullChart.data.labels = [];
             piFullChart.data.datasets.forEach((dataset) => (dataset.data = []));
+            applyStatusOverlay(piFullChart, { offlineSpans: [], powerSpans: [] });
             piFullChart.update("none");
           }
           return;
@@ -848,6 +1037,7 @@
         piFullChartContainer.style.display = "block";
         const series = buildPiSeries(points);
         const datasets = createPiDatasets(series);
+        const overlay = buildStatusOverlay(points);
 
         if (!piFullChart) {
           const ctx = piFullChartCanvas.getContext("2d");
@@ -905,11 +1095,14 @@
               },
             },
           });
+          applyStatusOverlay(piFullChart, overlay);
+          piFullChart.update("none");
         } else {
           piFullChart.data.labels = series.labels;
           piFullChart.data.datasets.forEach((dataset, idx) => {
             dataset.data = datasets[idx].data;
           });
+          applyStatusOverlay(piFullChart, overlay);
           piFullChart.update("none");
         }
       }
