@@ -34,3 +34,11 @@ This project provides a clean and simple dashboard to monitor multiple URLs or s
    ```bash
    git clone [https://github.com/MDTrapaglia/status_page.git](https://github.com/MDTrapaglia/status_page.git)
    cd status_page
+2. Install dependencies:
+   pip install -r requirements.txt
+3. Run the application: You can use the provided shell script:
+chmod +x run.sh
+./run.sh
+Or run it directly with Python:
+
+python app.py
