@@ -17,10 +17,11 @@ This project provides a clean and simple dashboard to monitor multiple URLs or s
 
 ## ✨ Key Features
 
-* **Automated Health Checks:** Periodically validates service status via HTTP requests.
-* **Clean Dashboard:** A minimalist UI to see at a glance which services are "Online" or "Offline".
-* **Lightweight Architecture:** Minimal resource footprint, perfect for deploying on low-cost VPS or containers.
-* **One-Step Execution:** Includes a `run.sh` script for quick environment setup and launch.
+* **Automated Uptime Tracking:** Periodically validates service status via HTTP requests.
+* **Security Insights (Firewall Monitoring):** Post-processes system firewall logs to track and visualize blocked connection attempts, helping identify potential threats.
+* **Traffic Analysis:** Monitors and summarizes incoming network traffic to provide a clear view of system load and usage patterns.
+* **Clean Dashboard:** A minimalist UI to see at a glance service status, security metrics, and traffic data.
+* **Lightweight Architecture:** Designed for high efficiency with minimal resource consumption.
 
 ## ⚙️ Installation & Setup
 
