@@ -22,6 +22,7 @@ This project provides a clean and simple dashboard to monitor multiple URLs or s
 * **Traffic Analysis:** Monitors and summarizes incoming network traffic to provide a clear view of system load and usage patterns.
 * **Clean Dashboard:** A minimalist UI to see at a glance service status, security metrics, and traffic data.
 * **Lightweight Architecture:** Designed for high efficiency with minimal resource consumption.
+* **Resource Performance History:** Tracks and stores historical consumption of system resources (CPU, Memory, I/O) to identify and troubleshoot performance bottlenecks.
 
 ## ⚙️ Installation & Setup
 
