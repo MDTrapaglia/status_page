@@ -1120,7 +1120,7 @@
       async function refresh() {
         try {
           const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
-          const response = await fetch(`/api/prices${query}`);
+          const response = await fetch(`api/prices${query}`);
           const payload = await response.json();
 
           if (!response.ok) {
@@ -1147,7 +1147,7 @@
       async function refreshPortBlock() {
         try {
           const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
-          const response = await fetch(`/api/port-block${query}`);
+          const response = await fetch(`api/port-block${query}`);
           const payload = await response.json();
           if (!response.ok) {
             throw new Error(payload.error || payload.port_block?.error || "Unknown error");
