@@ -14,9 +14,9 @@ kill_running() {
   # Any lingering run.sh shells
   pids+=" $(pgrep -f "bash ./run.sh" || true)"
 
-  # Processes holding port 80, if fuser is available
+  # Processes holding port 3010, if fuser is available
   if command -v fuser >/dev/null 2>&1; then
-    pids+=" $(fuser 80/tcp 2>/dev/null || true)"
+    pids+=" $(fuser 3010/tcp 2>/dev/null || true)"
   fi
 
   # Deduplicate and remove empty tokens
@@ -47,5 +47,5 @@ echo "Compilando app.py..."
 python -m py_compile "$SCRIPT_DIR/app.py"
 
 export FLASK_APP=app
-echo "Iniciando servidor Flask en puerto 80..."
-flask run --reload --no-debugger --host 0.0.0.0 --port 80
+echo "Iniciando servidor Flask en puerto 3010..."
+flask run --reload --no-debugger --host 127.0.0.1 --port 3010
