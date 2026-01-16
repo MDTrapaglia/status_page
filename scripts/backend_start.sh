@@ -3,6 +3,8 @@ cd "$(dirname "$0")/.."
 
 PID_FILE=".backend.pid"
 VENV_PATH="./venv"
+HOST="127.0.0.1"
+PORT="3010"
 
 # Kill previous process if exists
 if [ -f "$PID_FILE" ]; then
@@ -32,8 +34,8 @@ echo "Compiling app.py..."
 python -m py_compile app.py
 
 export FLASK_APP=app
-echo "Starting Flask server on port 80..."
-flask run --reload --no-debugger --host 0.0.0.0 --port 80 &
+echo "Starting Flask server on ${HOST}:${PORT}..."
+flask run --reload --no-debugger --host "$HOST" --port "$PORT" &
 echo $! > "$PID_FILE"
 echo "Backend started (PID: $(cat $PID_FILE))"
-echo "URL: http://localhost:80"
+echo "URL: http://$HOST:$PORT"

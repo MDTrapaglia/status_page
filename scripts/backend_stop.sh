@@ -24,9 +24,9 @@ echo "Stopping any remaining Flask processes..."
 pkill -f "flask run" 2>/dev/null && echo "Flask processes stopped" || echo "No Flask processes found"
 pkill -f "venv/bin/flask" 2>/dev/null || true
 
-# Kill processes on port 80
+# Kill processes on port 3010
 if command -v fuser >/dev/null 2>&1; then
-    fuser -k 80/tcp 2>/dev/null || true
+    fuser -k 3010/tcp 2>/dev/null || true
 fi
 
 echo "Backend stopped completely"
