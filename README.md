@@ -2,6 +2,8 @@
 
 A lightweight, Python-powered monitoring tool designed to track and display the real-time availability of web services and infrastructure.
 
+**🌐 Live:** [https://matiastrapaglia.space/status/?token=gaelito2025](https://matiastrapaglia.space/status/?token=gaelito2025)
+
 ---
 
 ## 🚀 Overview
@@ -24,11 +26,16 @@ This project provides a clean and simple dashboard to monitor multiple URLs or s
 * **Lightweight Architecture:** Designed for high efficiency with minimal resource consumption.
 * **Resource Performance History:** Tracks and stores historical consumption of system resources (CPU, Memory, I/O) to identify and troubleshoot performance bottlenecks.
 
+## 📚 Documentation
+
+* **[How to Add a New Page to matiastrapaglia.space](docs/agregar-nueva-pagina.md)** - Complete guide for creating and deploying new applications under subdomains
+
 ## ⚙️ Installation & Setup
 
 ### Prerequisites
 * Python 3.x
 * pip (Python package manager)
+* Nginx (for production deployment)
 
 ### Steps
 
@@ -36,11 +43,43 @@ This project provides a clean and simple dashboard to monitor multiple URLs or s
    ```bash
    git clone [https://github.com/MDTrapaglia/status_page.git](https://github.com/MDTrapaglia/status_page.git)
    cd status_page
-2. Install dependencies:
+2. **Install dependencies:**
+   ```bash
    pip install -r requirements.txt
-3. Run the application: You can use the provided shell script:
-chmod +x run.sh
-./run.sh
-Or run it directly with Python:
+   ```
 
-python app.py
+3. **Run the application:**
+
+   Using the shell script:
+   ```bash
+   chmod +x run.sh
+   ./run.sh
+   ```
+
+   Or run it directly with Python:
+   ```bash
+   python app.py
+   ```
+
+## 🚀 Production Deployment
+
+The application is configured to run on port 3010 and is served under `/status/` via Nginx reverse proxy.
+
+### Start/Stop Scripts
+
+```bash
+# Start the application in background
+./scripts/start_all.sh
+
+# Stop the application
+./scripts/stop_all.sh
+
+# Check status
+./status.sh
+```
+
+### Nginx Configuration
+
+The application is served at `https://matiastrapaglia.space/status/` with token authentication.
+
+For details on deploying new applications, see [the deployment guide](docs/agregar-nueva-pagina.md).
