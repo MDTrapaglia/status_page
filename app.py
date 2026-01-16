@@ -1149,5 +1149,5 @@ def api_port_block():
 
 
 if __name__ == "__main__":
-    logger.info("Starting Flask server")
-    app.run(use_reloader=True)
+    logger.info("Starting Flask server on port 3010")
+    app.run(host="127.0.0.1", port=3010, use_reloader=True)
