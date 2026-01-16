@@ -1107,6 +1107,37 @@
         }
       }
 
+      function summarizeResponseBody(text, maxLength = 160) {
+        if (!text) return "";
+        return text.replace(/\s+/g, " ").trim().slice(0, maxLength);
+      }
+
+      async function parseApiJson(response, label) {
+        const bodyText = await response.text();
+        let payload = {};
+        if (bodyText) {
+          try {
+            payload = JSON.parse(bodyText);
+          } catch (err) {
+            const snippet = summarizeResponseBody(bodyText) || err.message || "invalid JSON";
+            throw new Error(
+              `${label || "API"} devolvió una respuesta no válida (${response.status}): ${snippet}`
+            );
+          }
+        }
+
+        if (!response.ok) {
+          const details =
+            payload?.error ||
+            payload?.message ||
+            payload?.detail ||
+            `${response.status} ${response.statusText || ""}`.trim();
+          throw new Error(`${label || "API"}: ${details}`);
+        }
+
+        return payload;
+      }
+
       function renderError(message) {
         if (message) {
           errorBox.style.display = "block";
@@ -1121,11 +1152,7 @@
         try {
           const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
           const response = await fetch(`api/prices${query}`);
-          const payload = await response.json();
-
-          if (!response.ok) {
-            throw new Error(payload.error || "Unknown error");
-          }
+          const payload = await parseApiJson(response, "API de dashboard");
 
           renderRows(payload.data || []);
           renderSystem(payload.system);
@@ -1148,10 +1175,7 @@
         try {
           const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
           const response = await fetch(`api/port-block${query}`);
-          const payload = await response.json();
-          if (!response.ok) {
-            throw new Error(payload.error || payload.port_block?.error || "Unknown error");
-          }
+          const payload = await parseApiJson(response, "API de UFW");
           renderPortBlock(payload.port_block);
         } catch (err) {
           if (portBlockError) {
