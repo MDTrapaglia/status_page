@@ -348,6 +348,7 @@ def _load_port_block_payload() -> Dict[str, object]:
                 continue
             if path.stem in PORT_BLOCK_EXCLUDED_PLOTS:
                 continue
+            relative_path = path.relative_to(PORT_BLOCK_ROOT)
             try:
                 mtime_dt = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
                 mtime = mtime_dt.isoformat()
@@ -357,10 +358,10 @@ def _load_port_block_payload() -> Dict[str, object]:
                 mtime = None
             plots.append(
                 {
-                    "filename": str(path.relative_to(PORT_BLOCK_ROOT)),
+                    "filename": str(relative_path),
                     "label": path.stem.replace("_", " ").title(),
                     "updated_at": mtime,
-                    "url": f"/port-block/{path.relative_to(PORT_BLOCK_ROOT)}",
+                    "url": f"port-block/{relative_path}",
                 }
             )
     except OSError as exc:
