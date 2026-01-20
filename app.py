@@ -69,6 +69,9 @@ STOCKS: List[Dict[str, str]] = [
     {"name": "Marvell Technology (MRVL)", "symbol": "MRVL"},
 ]
 BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr"
+MARKET_CACHE: Dict[str, object] = {"data": [], "timestamp": None}
+MARKET_CACHE_TTL = timedelta(seconds=60)
+MARKET_CACHE_LOCK = threading.Lock()
 AXEOS_HOST = "192.168.100.117"
 AXEOS_BASE_URL = f"http://{AXEOS_HOST}"
 AXEOS_SYSTEM_INFO = f"{AXEOS_BASE_URL}/api/system/info"
@@ -104,6 +107,11 @@ PI_FULL_HISTORY: List[Dict[str, object]] = []
 SESSION_STATE_PATH = Path("session_state.json")
 QUOTES_PATH = Path("acim_quotes.json")
 QUOTES_MAX_AGE = timedelta(days=7)
+QUOTES_REFRESH_INTERVAL = timedelta(hours=12)
+QUOTE_REQUEST_TIMEOUT = 5
+QUOTE_CACHE: List[str] = []
+QUOTE_LAST_FETCH: Optional[datetime] = None
+QUOTE_LOCK = threading.Lock()
 QUOTE_SOURCES = [
     {"url": "https://coachingdelser.com/frases-un-curso-de-milagros/", "selector": "blockquote, p"},
     {"url": "https://www.enbuenasmanos.com/frases-del-libro-un-curso-de-milagros", "selector": "blockquote, li"},
@@ -186,7 +194,7 @@ def _scrape_quotes() -> List[str]:
         url = source["url"]
         selector = source.get("selector") or "blockquote"
         try:
-            resp = requests.get(url, headers=headers, timeout=10)
+            resp = requests.get(url, headers=headers, timeout=QUOTE_REQUEST_TIMEOUT)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
             candidates = soup.select(selector) or soup.find_all("blockquote")
@@ -210,26 +218,41 @@ def _scrape_quotes() -> List[str]:
     return unique
 
 
-def _ensure_quotes() -> List[str]:
-    quotes = _load_cached_quotes()
-    is_stale = False
+def _get_quote_file_mtime() -> Optional[datetime]:
     try:
-        if QUOTES_PATH.exists():
-            mtime = datetime.fromtimestamp(QUOTES_PATH.stat().st_mtime, tz=timezone.utc)
-            is_stale = datetime.now(timezone.utc) - mtime > QUOTES_MAX_AGE
+        return datetime.fromtimestamp(QUOTES_PATH.stat().st_mtime, tz=timezone.utc)
     except OSError:
-        is_stale = True
+        return None
 
-    if not quotes or is_stale:
+
+def _ensure_quotes() -> List[str]:
+    global QUOTE_CACHE, QUOTE_LAST_FETCH
+
+    now = datetime.now(timezone.utc)
+    with QUOTE_LOCK:
+        if QUOTE_CACHE and QUOTE_LAST_FETCH and now - QUOTE_LAST_FETCH < QUOTES_REFRESH_INTERVAL:
+            return QUOTE_CACHE
+
+        if not QUOTE_CACHE:
+            cached = _load_cached_quotes()
+            if cached:
+                QUOTE_CACHE = cached
+                QUOTE_LAST_FETCH = _get_quote_file_mtime() or now
+                if QUOTE_LAST_FETCH and now - QUOTE_LAST_FETCH < QUOTES_REFRESH_INTERVAL:
+                    return QUOTE_CACHE
+
         fresh = _scrape_quotes()
+        QUOTE_LAST_FETCH = now
         if fresh:
-            quotes = fresh
+            QUOTE_CACHE = fresh
             _save_cached_quotes(fresh)
+            return QUOTE_CACHE
 
-    if not quotes:
-        quotes = FALLBACK_QUOTES
+        if not QUOTE_CACHE:
+            QUOTE_CACHE = FALLBACK_QUOTES
+            _save_cached_quotes(QUOTE_CACHE)
 
-    return quotes
+        return QUOTE_CACHE
 
 
 def _get_daily_quote() -> Optional[str]:
@@ -424,10 +447,30 @@ def fetch_dashboard_data(include_port_block: bool = True):
 
 
 def fetch_market_data() -> List[Dict[str, float]]:
-    """Fetch price and 24h change for crypto and stocks."""
-    crypto_data = _fetch_from_binance()
-    stock_data = _fetch_from_yfinance()
-    return crypto_data + stock_data
+    """Fetch price and 24h change for crypto and stocks with a short-lived cache."""
+    now = datetime.now(timezone.utc)
+    with MARKET_CACHE_LOCK:
+        cached_data = MARKET_CACHE.get("data") or []
+        cached_at = MARKET_CACHE.get("timestamp")
+
+    if cached_data and cached_at and now - cached_at < MARKET_CACHE_TTL:
+        return cached_data
+
+    try:
+        crypto_data = _fetch_from_binance()
+        stock_data = _fetch_from_yfinance()
+        combined = crypto_data + stock_data
+    except RuntimeError as exc:
+        if cached_data:
+            logger.warning("Using cached market data after error: %s", exc)
+            return cached_data
+        raise
+
+    with MARKET_CACHE_LOCK:
+        MARKET_CACHE["data"] = combined
+        MARKET_CACHE["timestamp"] = now
+
+    return combined
 
 
 def _fetch_from_binance() -> List[Dict[str, float]]:
