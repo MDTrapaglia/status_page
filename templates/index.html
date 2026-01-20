@@ -24,7 +24,8 @@
         color: #e2e8f0;
       }
 
-      body.reveal-ready [data-reveal] {
+      body.reveal-ready [data-reveal],
+      body.reveal-ready [data-child-reveal] {
         opacity: 0;
         transform: translateY(16px);
         transition: opacity 0.6s ease, transform 0.6s ease;
@@ -32,13 +33,15 @@
         will-change: opacity, transform;
       }
 
-      body.reveal-ready [data-reveal].is-visible {
+      body.reveal-ready [data-reveal].is-visible,
+      body.reveal-ready [data-child-reveal].is-visible {
         opacity: 1;
         transform: translateY(0);
       }
 
       @media (prefers-reduced-motion: reduce) {
-        body.reveal-ready [data-reveal] {
+        body.reveal-ready [data-reveal],
+        body.reveal-ready [data-child-reveal] {
           opacity: 1;
           transform: none;
           transition: none;
@@ -498,6 +501,7 @@
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
       let piChart = null;
       let piFullChart = null;
+      const revealedKeys = new Set();
 
       const STATUS_COLORS = {
         offline: "rgba(239, 68, 68, 0.18)",
@@ -536,16 +540,43 @@
             )
           : null;
 
-      Array.from(document.querySelectorAll("[data-reveal]")).forEach((el, index) => {
-        const order = Number(el.dataset.revealOrder);
-        const safeOrder = Number.isFinite(order) ? order : index;
-        el.style.setProperty("--reveal-order", safeOrder);
-        if (revealObserver) {
-          revealObserver.observe(el);
-        } else {
-          el.classList.add("is-visible");
+      function observeRevealTargets(targets) {
+        Array.from(targets || []).forEach((el, index) => {
+          const order = Number(el.dataset.revealOrder);
+          const safeOrder = Number.isFinite(order) ? order : index;
+          el.style.setProperty("--reveal-order", safeOrder);
+          if (revealObserver) {
+            revealObserver.observe(el);
+          } else {
+            el.classList.add("is-visible");
+          }
+        });
+      }
+
+      function sequentialReveal(targets, { onceKey, delayStep = 140, baseDelay = 120 } = {}) {
+        const elements = Array.from(targets || []);
+        if (!elements.length) return;
+        const shouldAnimate = onceKey ? !revealedKeys.has(onceKey) : true;
+        elements.forEach((el, idx) => {
+          const orderValue = Number(el.dataset.revealOrder);
+          const order = Number.isFinite(orderValue) ? orderValue : idx;
+          el.style.setProperty("--reveal-order", order);
+          el.classList.remove("is-visible");
+          if (!shouldAnimate) {
+            el.classList.add("is-visible");
+            return;
+          }
+          setTimeout(() => {
+            if (!document.body.contains(el)) return;
+            el.classList.add("is-visible");
+          }, baseDelay + delayStep * idx);
+        });
+        if (shouldAnimate && onceKey) {
+          revealedKeys.add(onceKey);
         }
-      });
+      }
+
+      observeRevealTargets(document.querySelectorAll("[data-reveal]"));
 
       const statusOverlayPlugin = {
         id: "statusOverlay",
@@ -754,8 +785,11 @@
 
       function renderRows(items) {
         pricesBody.innerHTML = "";
+        const rows = [];
         items.forEach((item) => {
           const row = document.createElement("tr");
+          row.setAttribute("data-child-reveal", "");
+          row.style.setProperty("--reveal-order", rows.length);
           row.innerHTML = `
             <td>${item.name}</td>
             <td class="price">${
@@ -768,7 +802,9 @@
             <td class="change ${changeClass(item.change_30d)}">${formatChange(item.change_30d)}</td>
           `;
           pricesBody.appendChild(row);
+          rows.push(row);
         });
+        sequentialReveal(rows, { onceKey: "prices", baseDelay: 160, delayStep: 120 });
       }
 
       function renderMetricsCard(data, elements) {
@@ -809,9 +845,16 @@
           subtitleEl.style.display = subtitle ? "block" : "none";
         }
 
+        const revealTargets = [];
+        let childOrder = 0;
+
         if (highlightEl) {
           if (data?.highlight && data.highlight.value) {
             highlightEl.style.display = "block";
+            highlightEl.setAttribute("data-child-reveal", "");
+            highlightEl.style.setProperty("--reveal-order", childOrder);
+            childOrder += 1;
+            revealTargets.push(highlightEl);
             if (highlightLabelEl) {
               highlightLabelEl.textContent = data.highlight.label || "";
             }
@@ -820,12 +863,18 @@
             }
           } else {
             highlightEl.style.display = "none";
+            highlightEl.removeAttribute("data-child-reveal");
+            highlightEl.classList.remove("is-visible");
           }
         }
 
         if (subHighlightEl) {
           if (subHighlight && subHighlight.value) {
             subHighlightEl.style.display = "flex";
+            subHighlightEl.setAttribute("data-child-reveal", "");
+            subHighlightEl.style.setProperty("--reveal-order", childOrder);
+            childOrder += 1;
+            revealTargets.push(subHighlightEl);
             if (subHighlightLabelEl) {
               subHighlightLabelEl.textContent = subHighlight.label || "";
             }
@@ -834,6 +883,8 @@
             }
           } else {
             subHighlightEl.style.display = "none";
+            subHighlightEl.removeAttribute("data-child-reveal");
+            subHighlightEl.classList.remove("is-visible");
           }
         }
 
@@ -842,13 +893,23 @@
           (data?.metrics || []).forEach((metric) => {
             const row = document.createElement("div");
             row.className = "metric-row";
+            row.setAttribute("data-child-reveal", "");
+            row.style.setProperty("--reveal-order", childOrder);
+            childOrder += 1;
             row.innerHTML = `
               <span class="label">${metric.label}</span>
               <span class="value">${metric.value}</span>
             `;
+            revealTargets.push(row);
             metricsEl.appendChild(row);
           });
         }
+
+        sequentialReveal(revealTargets, {
+          onceKey: card?.id || defaultTitle || "metrics",
+          baseDelay: 140,
+          delayStep: 110,
+        });
       }
 
       function renderSystem(system) {
