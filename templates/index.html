@@ -24,6 +24,27 @@
         color: #e2e8f0;
       }
 
+      body.reveal-ready [data-reveal] {
+        opacity: 0;
+        transform: translateY(14px);
+        transition: opacity 0.5s ease, transform 0.5s ease;
+        transition-delay: calc(var(--reveal-order, 0) * 90ms);
+        will-change: opacity, transform;
+      }
+
+      body.reveal-ready [data-reveal].is-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        body.reveal-ready [data-reveal] {
+          opacity: 1;
+          transform: none;
+          transition: none;
+        }
+      }
+
       h1,
       h2 {
         margin: 0;
@@ -342,7 +363,7 @@
   </head>
   <body>
     <div class="stack">
-      <section class="card">
+      <section class="card" data-reveal data-reveal-order="0">
         <h1>Markets and stocks</h1>
         <div class="meta">
           <div>
@@ -369,7 +390,7 @@
         </div>
       </section>
 
-      <section class="card" id="device-card" style="display: none">
+      <section class="card" id="device-card" data-reveal data-reveal-order="1" style="display: none">
         <div class="device-header">
           <h2 id="device-title">AxeOS</h2>
           <div id="device-subtitle" class="meta"></div>
@@ -385,7 +406,7 @@
         <div class="metrics-group" id="device-metrics"></div>
       </section>
 
-      <section class="card" id="pi-card" style="display: none">
+      <section class="card" id="pi-card" data-reveal data-reveal-order="2" style="display: none">
         <div class="device-header">
           <h2 id="pi-title">Raspberry Pi</h2>
           <div id="pi-subtitle" class="meta"></div>
@@ -416,12 +437,12 @@
         <div class="metrics-group" id="pi-metrics"></div>
       </section>
 
-      <section class="quote-card" id="quote-card" style="display: none">
+      <section class="quote-card" id="quote-card" data-reveal data-reveal-order="3" style="display: none">
         <div class="quote-title">Quote of the day — A Course in Miracles</div>
         <div class="quote-text" id="quote-text"></div>
       </section>
 
-      <section class="card" id="port-block-card" style="display: none">
+      <section class="card" id="port-block-card" data-reveal data-reveal-order="4" style="display: none">
         <div class="device-header">
           <h2>UFW blocks</h2>
           <div id="port-block-subtitle" class="meta"></div>
@@ -497,6 +518,34 @@
         if (!Number.isFinite(value)) return "";
         return value >= 0 ? "positive" : "negative";
       }
+
+      document.body.classList.add("reveal-ready");
+      const revealObserver =
+        "IntersectionObserver" in window
+          ? new IntersectionObserver(
+              (entries, observer) => {
+                entries.forEach((entry) => {
+                  if (entry.isIntersecting) {
+                    const target = entry.target;
+                    target.classList.add("is-visible");
+                    observer.unobserve(target);
+                  }
+                });
+              },
+              { threshold: 0.18 }
+            )
+          : null;
+
+      Array.from(document.querySelectorAll("[data-reveal]")).forEach((el, index) => {
+        const order = Number(el.dataset.revealOrder);
+        const safeOrder = Number.isFinite(order) ? order : index;
+        el.style.setProperty("--reveal-order", safeOrder);
+        if (revealObserver) {
+          revealObserver.observe(el);
+        } else {
+          el.classList.add("is-visible");
+        }
+      });
 
       const statusOverlayPlugin = {
         id: "statusOverlay",
