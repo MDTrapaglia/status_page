@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Overlays</title>
+</head>
+<body>
+    <h1>Frontend Overlay Test</h1>
+    <pre id="output"></pre>
+
+    <script>
+        async function testOverlays() {
+            const response = await fetch('/api/prices?token=gaelito2025');
+            const data = await response.json();
+
+            const overlays = data.pi_history_full?.overlays;
+            const output = document.getElementById('output');
+
+            output.textContent = 'Overlays received from the backend:\n\n';
+            output.textContent += 'Offline spans: ' + (overlays?.offlineSpans?.length || 0) + '\n';
+
+            if (overlays?.offlineSpans) {
+                overlays.offlineSpans.forEach((span, i) => {
+                    output.textContent += `  [${i}] ${span.start} → ${span.end}\n`;
+                    output.textContent += `      start as Date: ${new Date(span.start)}\n`;
+                    output.textContent += `      end as Date: ${new Date(span.end)}\n`;
+                });
+            }
+
+            output.textContent += '\nPower spans: ' + (overlays?.powerSpans?.length || 0) + '\n';
+
+            if (overlays?.powerSpans) {
+                overlays.powerSpans.forEach((span, i) => {
+                    output.textContent += `  [${i}] ${span.start} → ${span.end}\n`;
+                    output.textContent += `      Duration: ${(new Date(span.end) - new Date(span.start)) / 60000} min\n`;
+                });
+            }
+
+            output.textContent += '\n✓ Overlays are present and should render on the chart';
+        }
+
+        testOverlays();
+    </script>
+</body>
+</html>

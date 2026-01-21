@@ -430,11 +430,11 @@
         <div class="status-legend" id="pi-status-legend">
           <div class="legend-item" id="legend-offline">
             <span class="legend-swatch offline"></span>
-            <span>Sin internet</span>
+            <span>Offline</span>
           </div>
           <div class="legend-item" id="legend-power">
             <span class="legend-swatch power"></span>
-            <span>Sin tensión / script detenido</span>
+            <span>No power / script stopped</span>
           </div>
         </div>
         <div class="metrics-group" id="pi-metrics"></div>
@@ -1231,7 +1231,7 @@
           } catch (err) {
             const snippet = summarizeResponseBody(bodyText) || err.message || "invalid JSON";
             throw new Error(
-              `${label || "API"} devolvió una respuesta no válida (${response.status}): ${snippet}`
+              `${label || "API"} returned an invalid response (${response.status}): ${snippet}`
             );
           }
         }
@@ -1262,7 +1262,7 @@
         try {
           const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
           const response = await fetch(`api/prices${query}`);
-          const payload = await parseApiJson(response, "API de dashboard");
+          const payload = await parseApiJson(response, "Dashboard API");
 
           renderRows(payload.data || []);
           renderSystem(payload.system);
@@ -1285,7 +1285,7 @@
         try {
           const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
           const response = await fetch(`api/port-block${query}`);
-          const payload = await parseApiJson(response, "API de UFW");
+          const payload = await parseApiJson(response, "UFW API");
           renderPortBlock(payload.port_block);
         } catch (err) {
           if (portBlockError) {
