@@ -524,33 +524,18 @@
       }
 
       document.body.classList.add("reveal-ready");
-      const revealObserver =
-        "IntersectionObserver" in window
-          ? new IntersectionObserver(
-              (entries, observer) => {
-                entries.forEach((entry) => {
-                  if (entry.isIntersecting) {
-                    const target = entry.target;
-                    target.classList.add("is-visible");
-                    observer.unobserve(target);
-                  }
-                });
-              },
-              { threshold: 0.18 }
-            )
-          : null;
 
-      function observeRevealTargets(targets) {
-        Array.from(targets || []).forEach((el, index) => {
-          const order = Number(el.dataset.revealOrder);
-          const safeOrder = Number.isFinite(order) ? order : index;
-          el.style.setProperty("--reveal-order", safeOrder);
-          if (revealObserver) {
-            revealObserver.observe(el);
-          } else {
+      function revealAfterDelay(targets, delayMs = 320) {
+        const elements = Array.from(targets || []);
+        if (!elements.length) return;
+        setTimeout(() => {
+          elements.forEach((el, index) => {
+            const order = Number(el.dataset.revealOrder);
+            const safeOrder = Number.isFinite(order) ? order : index;
+            el.style.setProperty("--reveal-order", safeOrder);
             el.classList.add("is-visible");
-          }
-        });
+          });
+        }, delayMs);
       }
 
       function sequentialReveal(targets, { onceKey, delayStep = 140, baseDelay = 120 } = {}) {
@@ -576,7 +561,7 @@
         }
       }
 
-      observeRevealTargets(document.querySelectorAll("[data-reveal]"));
+      revealAfterDelay(document.querySelectorAll("[data-reveal]"));
 
       const statusOverlayPlugin = {
         id: "statusOverlay",
