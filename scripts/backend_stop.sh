@@ -19,10 +19,11 @@ else
     echo "No PID file found"
 fi
 
-# Kill any lingering Flask processes
-echo "Stopping any remaining Flask processes..."
+# Kill any lingering Flask/Gunicorn processes
+echo "Stopping any remaining Flask/Gunicorn processes..."
 pkill -f "flask run" 2>/dev/null && echo "Flask processes stopped" || echo "No Flask processes found"
 pkill -f "venv/bin/flask" 2>/dev/null || true
+pkill -f "gunicorn .*app:app" 2>/dev/null && echo "Gunicorn processes stopped" || echo "No Gunicorn processes found"
 
 # Kill processes on port 3010
 if command -v fuser >/dev/null 2>&1; then
