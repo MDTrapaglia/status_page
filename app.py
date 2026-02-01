@@ -64,6 +64,7 @@ logger.info("Logging initialized; writing to %s", LOG_PATH)
 COINS: List[Dict[str, str]] = [
     {"name": "Bitcoin", "symbol": "BTCUSDT", "yf_symbol": "BTC-USD"},
     {"name": "Ethereum", "symbol": "ETHUSDT", "yf_symbol": "ETH-USD"},
+    {"name": "Cardano", "symbol": "ADAUSDT", "yf_symbol": "ADA-USD"},
 ]
 STOCKS: List[Dict[str, str]] = [
     {"name": "Marvell Technology (MRVL)", "symbol": "MRVL"},
