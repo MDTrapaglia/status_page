@@ -342,9 +342,28 @@
         overflow-x: auto;
       }
 
-      .table-scroll table {
-        min-width: 640px;
-      }
+        .table-scroll table {
+          min-width: 640px;
+        }
+
+        .sparkline {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          min-width: 120px;
+        }
+
+        .sparkline svg {
+          width: 120px;
+          height: 28px;
+          display: block;
+        }
+
+        .sparkline .spark-meta {
+          font-size: 0.8rem;
+          color: #94a3b8;
+          white-space: nowrap;
+        }
 
       @media (max-width: 640px) {
         h1 {
@@ -383,6 +402,7 @@
               <tr>
                 <th>Asset</th>
                 <th>Price (USD)</th>
+                <th>30d spark</th>
                 <th>Change 24h</th>
                 <th>Change 7d</th>
                 <th>Change 30d</th>
@@ -723,6 +743,47 @@
         return `${url}${separator}${params.join("&")}`;
       }
 
+      function renderSparkline(points) {
+        if (!Array.isArray(points) || !points.length) return "—";
+
+        const values = points.map((p) => Number(p.v)).filter((v) => Number.isFinite(v));
+        if (!values.length) return "—";
+
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = max - min || 1;
+        const width = 120;
+        const height = 28;
+        const step = values.length > 1 ? width / (values.length - 1) : width;
+
+        const coords = values
+          .map((v, idx) => {
+            const x = idx * step;
+            const y = height - ((v - min) / range) * height;
+            return `${x.toFixed(2)},${y.toFixed(2)}`;
+          })
+          .join(" ");
+
+        const last = values[values.length - 1];
+        const first = values[0];
+        const change = ((last - first) / first) * 100;
+        const meta = `${change >= 0 ? "▲" : "▼"} ${change.toFixed(1)}%`;
+
+        return `
+          <span class="sparkline">
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+              <polyline
+                fill="none"
+                stroke="${change >= 0 ? "#34d399" : "#f87171"}"
+                stroke-width="2"
+                points="${coords}"
+              />
+            </svg>
+            <span class="spark-meta">${meta}</span>
+          </span>
+        `;
+      }
+
       function renderQuote(quotePayload) {
         const text = quotePayload?.text;
         if (text) {
@@ -801,6 +862,7 @@
         pricesBody.innerHTML = "";
         const rows = [];
         items.forEach((item) => {
+          const spark = Array.isArray(item.spark_30d) ? item.spark_30d : [];
           const row = document.createElement("tr");
           row.setAttribute("data-child-reveal", "");
           row.style.setProperty("--reveal-order", rows.length);
@@ -811,6 +873,7 @@
                 ? "—"
                 : formatter.format(item.price)
             }</td>
+            <td>${renderSparkline(spark)}</td>
             <td class="change ${changeClass(item.change)}">${formatChange(item.change)}</td>
             <td class="change ${changeClass(item.change_7d)}">${formatChange(item.change_7d)}</td>
             <td class="change ${changeClass(item.change_30d)}">${formatChange(item.change_30d)}</td>

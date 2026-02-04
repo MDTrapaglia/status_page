@@ -291,6 +291,44 @@ def _calculate_change_from_series(closes: "pd.Series", days: int) -> Optional[fl
         return None
 
 
+def _timestamp_to_iso_date(ts: object) -> str:
+    if isinstance(ts, datetime):
+        return ts.date().isoformat()
+    try:
+        dt = ts.to_pydatetime()
+        return dt.date().isoformat()
+    except Exception:
+        return str(ts)
+
+
+def _build_sparkline_series(
+    closes: "pd.Series", days: int = 32, max_points: int = 48
+) -> List[Dict[str, object]]:
+    if closes is None or closes.empty:
+        return []
+
+    cutoff = closes.index[-1] - timedelta(days=days)
+    recent = closes[closes.index >= cutoff].dropna()
+    if recent.empty:
+        return []
+
+    series = []
+    for ts, value in recent.items():
+        numeric_value = _safe_float(value)
+        if numeric_value is None:
+            continue
+        series.append({"t": _timestamp_to_iso_date(ts), "v": numeric_value})
+
+    if len(series) > max_points:
+        step = max(1, math.ceil(len(series) / max_points))
+        downsampled = series[::step]
+        if downsampled[-1] != series[-1]:
+            downsampled.append(series[-1])
+        series = downsampled
+
+    return series
+
+
 def _fetch_yfinance_snapshot(symbol: str) -> Dict[str, Optional[float]]:
     try:
         ticker = yf.Ticker(symbol)
@@ -306,6 +344,7 @@ def _fetch_yfinance_snapshot(symbol: str) -> Dict[str, Optional[float]]:
         change_1d = _calculate_change_from_series(closes, 1)
         change_7d = _calculate_change_from_series(closes, 7)
         change_30d = _calculate_change_from_series(closes, 30)
+        spark_30d = _build_sparkline_series(closes, days=32, max_points=48)
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"No data for {symbol}") from exc
 
@@ -314,6 +353,7 @@ def _fetch_yfinance_snapshot(symbol: str) -> Dict[str, Optional[float]]:
         "change_1d": _safe_float(change_1d),
         "change_7d": _safe_float(change_7d),
         "change_30d": _safe_float(change_30d),
+        "spark_30d": spark_30d,
     }
 
 
@@ -510,8 +550,12 @@ def _fetch_from_binance() -> List[Dict[str, float]]:
                 change_30d = snapshot.get("change_30d")
                 if snapshot.get("price") is not None:
                     price = snapshot["price"]
+                spark_30d = snapshot.get("spark_30d")
             except RuntimeError as exc:
                 logger.warning("Could not fetch weekly/monthly data for %s: %s", yf_symbol, exc)
+                spark_30d = []
+        else:
+            spark_30d = []
 
         rows.append(
             {
@@ -521,6 +565,7 @@ def _fetch_from_binance() -> List[Dict[str, float]]:
                 "change": change_1d,
                 "change_7d": change_7d,
                 "change_30d": change_30d,
+                "spark_30d": spark_30d,
             }
         )
     return rows
@@ -540,6 +585,7 @@ def _fetch_from_yfinance() -> List[Dict[str, float]]:
                     "change": snapshot.get("change_1d"),
                     "change_7d": snapshot.get("change_7d"),
                     "change_30d": snapshot.get("change_30d"),
+                    "spark_30d": snapshot.get("spark_30d") or [],
                 }
             )
     except Exception as exc:  # noqa: BLE001
