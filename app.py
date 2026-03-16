@@ -100,6 +100,11 @@ DIFF_MULTIPLIERS: Dict[str, float] = {
     "T": 1_000_000_000_000,
     "P": 1_000_000_000_000_000,
 }
+BITAXE_BEST_HISTORY_PATH = Path("bitaxe_best_history.jsonl")
+BITAXE_BEST_HISTORY_RETENTION = timedelta(days=90)
+BITAXE_BEST_HISTORY_MAX_API_POINTS = 800
+BITAXE_BEST_HISTORY: List[Dict[str, object]] = []
+BITAXE_BEST_HISTORY_LOCK = threading.Lock()
 PI_TEMP_PATHS: List[Tuple[Path, float]] = [
     (Path("/sys/class/thermal/thermal_zone0/temp"), 1000),
     (Path("/sys/class/hwmon/hwmon0/temp1_input"), 1000),
@@ -494,6 +499,7 @@ def fetch_dashboard_data(include_port_block: bool = True):
     return {
         "markets": markets,
         "system": system,
+        "bitaxe_best_history": _build_bitaxe_best_history_series(),
         "pi": pi_stats,
         "pi_history": _build_pi_history_series(),
         "pi_history_full": _build_pi_full_history_series(),
@@ -663,6 +669,7 @@ def _fetch_system_snapshot() -> Dict[str, object]:
 
     highlight = _build_difficulty_highlight(payload)
     session_highlight = _build_session_highlight(payload)
+    _record_bitaxe_best_history(payload.get("bestSessionDiff"))
 
     return {
         "meta": {
@@ -743,6 +750,149 @@ def _build_session_highlight(payload: Dict[str, object]) -> Optional[Dict[str, s
         "label": "Best share of the session",
         "value": display_value,
     }
+
+
+def _serialize_bitaxe_entry(entry: Dict[str, object]) -> Dict[str, object]:
+    ts = entry.get("ts")
+    return {
+        "ts": ts.isoformat() if isinstance(ts, datetime) else ts,
+        "best_session": entry.get("best_session"),
+        "display": entry.get("display"),
+    }
+
+
+def _rewrite_bitaxe_best_history_file(entries) -> None:
+    try:
+        with BITAXE_BEST_HISTORY_PATH.open("w", encoding="utf-8") as handle:
+            for entry in entries:
+                json.dump(_serialize_bitaxe_entry(entry), handle, ensure_ascii=False)
+                handle.write("\n")
+    except OSError as exc:
+        logger.warning("Could not compact Bitaxe history: %s", exc)
+
+
+def _persist_bitaxe_best_entry(entry: Dict[str, object]) -> None:
+    payload = _serialize_bitaxe_entry(entry)
+    try:
+        with BITAXE_BEST_HISTORY_PATH.open("a", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False)
+            handle.write("\n")
+    except OSError as exc:
+        logger.warning("Could not save Bitaxe history: %s", exc)
+
+
+def _load_bitaxe_best_history_from_disk() -> None:
+    if not BITAXE_BEST_HISTORY_PATH.exists():
+        return
+
+    entries: List[Dict[str, object]] = []
+    retention_cutoff = (
+        datetime.now(timezone.utc) - BITAXE_BEST_HISTORY_RETENTION if BITAXE_BEST_HISTORY_RETENTION else None
+    )
+    try:
+        with BITAXE_BEST_HISTORY_PATH.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                raw_line = line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    payload = json.loads(raw_line)
+                    if not isinstance(payload, dict):
+                        continue
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+
+                ts_raw = payload.get("ts")
+                if not ts_raw:
+                    continue
+                try:
+                    ts = datetime.fromisoformat(ts_raw)
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                except (TypeError, ValueError):
+                    continue
+
+                if retention_cutoff and ts < retention_cutoff:
+                    continue
+
+                best_session = _safe_float(payload.get("best_session"))
+                if best_session is None:
+                    continue
+
+                display = payload.get("display")
+                entries.append({"ts": ts, "best_session": best_session, "display": display})
+    except OSError as exc:
+        logger.warning("Could not read Bitaxe history: %s", exc)
+        return
+
+    entries.sort(key=lambda item: item["ts"])
+    with BITAXE_BEST_HISTORY_LOCK:
+        BITAXE_BEST_HISTORY.clear()
+        BITAXE_BEST_HISTORY.extend(entries)
+
+
+def _record_bitaxe_best_history(best_session_raw) -> None:
+    best_session_value = _parse_difficulty(best_session_raw)
+    if best_session_value is None or best_session_value <= 0:
+        return
+
+    now = datetime.now(timezone.utc)
+    display_value = (
+        _format_difficulty_display(best_session_raw)
+        or _format_difficulty_display(best_session_value)
+        or str(best_session_raw)
+    )
+
+    pruned_snapshot: Optional[List[Dict[str, object]]] = None
+    with BITAXE_BEST_HISTORY_LOCK:
+        last = BITAXE_BEST_HISTORY[-1] if BITAXE_BEST_HISTORY else None
+        if last and _safe_float(last.get("best_session")) == best_session_value:
+            return
+
+        entry = {"ts": now, "best_session": best_session_value, "display": display_value}
+        BITAXE_BEST_HISTORY.append(entry)
+
+        if BITAXE_BEST_HISTORY_RETENTION:
+            cutoff = now - BITAXE_BEST_HISTORY_RETENTION
+            removed = 0
+            while BITAXE_BEST_HISTORY and BITAXE_BEST_HISTORY[0]["ts"] < cutoff:
+                BITAXE_BEST_HISTORY.pop(0)
+                removed += 1
+            if removed:
+                pruned_snapshot = list(BITAXE_BEST_HISTORY)
+
+    _persist_bitaxe_best_entry(entry)
+    if pruned_snapshot is not None:
+        _rewrite_bitaxe_best_history_file(pruned_snapshot)
+
+
+def _build_bitaxe_best_history_payload(entries: List[Dict[str, object]]) -> Dict[str, List[object]]:
+    labels: List[str] = []
+    values: List[Optional[float]] = []
+    displays: List[Optional[str]] = []
+
+    for entry in entries:
+        ts = entry.get("ts")
+        if not ts:
+            continue
+        labels.append(ts.isoformat() if isinstance(ts, datetime) else str(ts))
+        value = _safe_float(entry.get("best_session"))
+        values.append(value)
+        display_value = entry.get("display") or _format_difficulty_display(value)
+        displays.append(display_value)
+
+    return {
+        "labels": labels,
+        "best_session": values,
+        "display": displays,
+    }
+
+
+def _build_bitaxe_best_history_series() -> Dict[str, List[object]]:
+    with BITAXE_BEST_HISTORY_LOCK:
+        entries = list(BITAXE_BEST_HISTORY)
+    downsampled = _downsample_entries(entries, BITAXE_BEST_HISTORY_MAX_API_POINTS)
+    return _build_bitaxe_best_history_payload(downsampled)
 
 
 def _load_pi_full_history_from_disk() -> None:
@@ -1149,6 +1299,7 @@ def _start_pi_sampler():
     logger.info("Raspberry Pi sampling thread started")
 
 
+_load_bitaxe_best_history_from_disk()
 _load_pi_full_history_from_disk()
 _start_pi_sampler()
 
@@ -1201,6 +1352,7 @@ def index():
         "index.html",
         initial_data=dashboard["markets"],
         initial_system=dashboard["system"],
+        initial_bitaxe_best_history=dashboard["bitaxe_best_history"],
         initial_pi=dashboard["pi"],
         initial_pi_history=dashboard["pi_history"],
         initial_pi_history_full=dashboard["pi_history_full"],
@@ -1225,6 +1377,7 @@ def prices():
         {
             "data": dashboard["markets"],
             "system": dashboard["system"],
+            "bitaxe_best_history": dashboard["bitaxe_best_history"],
             "pi": dashboard["pi"],
             "pi_history": dashboard["pi_history"],
             "pi_history_full": dashboard["pi_history_full"],

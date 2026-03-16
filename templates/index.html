@@ -429,6 +429,12 @@
           <div class="label" id="session-highlight-label"></div>
           <div class="value" id="session-highlight-value"></div>
         </div>
+        <div class="chart-mini" id="bitaxe-best-chart-container" style="display: none">
+          <div class="chart-label">Best session history</div>
+          <div class="chart-wrapper mini-chart">
+            <canvas id="bitaxe-best-chart"></canvas>
+          </div>
+        </div>
         <div class="metrics-group" id="device-metrics"></div>
       </section>
 
@@ -482,6 +488,7 @@
       const initialData = {{ initial_data | tojson }};
       const initialError = {{ initial_error | tojson }};
       const initialSystem = {{ initial_system | tojson }};
+      const initialBitaxeBestHistory = {{ initial_bitaxe_best_history | tojson }};
       const initialPi = {{ initial_pi | tojson }};
       const initialPiHistory = {{ initial_pi_history | tojson }};
       const initialPiHistoryFull = {{ initial_pi_history_full | tojson }};
@@ -503,6 +510,8 @@
       const sessionHighlight = document.getElementById("session-highlight");
       const sessionHighlightLabel = document.getElementById("session-highlight-label");
       const sessionHighlightValue = document.getElementById("session-highlight-value");
+      const bitaxeBestChartContainer = document.getElementById("bitaxe-best-chart-container");
+      const bitaxeBestChartCanvas = document.getElementById("bitaxe-best-chart");
       const piCard = document.getElementById("pi-card");
       const piTitle = document.getElementById("pi-title");
       const piSubtitle = document.getElementById("pi-subtitle");
@@ -524,6 +533,7 @@
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
       let piChart = null;
       let piFullChart = null;
+      let bitaxeBestChart = null;
       const revealedKeys = new Set();
 
       const STATUS_COLORS = {
@@ -546,6 +556,20 @@
       function changeClass(value) {
         if (!Number.isFinite(value)) return "";
         return value >= 0 ? "positive" : "negative";
+      }
+
+      function formatDifficulty(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0) return "—";
+        const units = ["", "K", "M", "G", "T", "P"];
+        let val = numeric;
+        let unitIndex = 0;
+        while (val >= 1000 && unitIndex < units.length - 1) {
+          val /= 1000;
+          unitIndex += 1;
+        }
+        const rounded = val >= 100 ? val.toFixed(0) : val >= 10 ? val.toFixed(1) : val.toFixed(2);
+        return `${rounded}${units[unitIndex]}`;
       }
 
       document.body.classList.add("reveal-ready");
@@ -1019,6 +1043,22 @@
         });
       }
 
+      function normalizeBitaxeHistory(history) {
+        const labels = Array.isArray(history?.labels) ? history.labels : [];
+        const values = Array.isArray(history?.best_session) ? history.best_session : [];
+        const displays = Array.isArray(history?.display) ? history.display : [];
+        const points = [];
+        const length = Math.min(labels.length, values.length);
+        for (let i = 0; i < length; i += 1) {
+          const label = labels[i];
+          const value = Number(values[i]);
+          if (!label || !Number.isFinite(value)) continue;
+          const display = displays[i] || formatDifficulty(value);
+          points.push({ x: new Date(label), y: value, display });
+        }
+        return points;
+      }
+
       function renderPi(pi) {
         renderMetricsCard(pi, {
           card: piCard,
@@ -1106,6 +1146,93 @@
             tension: 0.3,
           },
         ];
+      }
+
+      function updateBitaxeBestChart(history) {
+        if (!bitaxeBestChartCanvas || !bitaxeBestChartContainer) return;
+        const points = normalizeBitaxeHistory(history);
+        if (!points.length) {
+          bitaxeBestChartContainer.style.display = "none";
+          if (bitaxeBestChart) {
+            bitaxeBestChart.data.labels = [];
+            bitaxeBestChart.data.datasets.forEach((dataset) => (dataset.data = []));
+            bitaxeBestChart.update("none");
+          }
+          return;
+        }
+
+        const labels = points.map((point) => point.x);
+        const data = points.map((point) => ({ x: point.x, y: point.y, display: point.display }));
+        bitaxeBestChartContainer.style.display = "block";
+
+        if (!bitaxeBestChart) {
+          const ctx = bitaxeBestChartCanvas.getContext("2d");
+          bitaxeBestChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Best session difficulty",
+                  data,
+                  borderColor: "#a78bfa",
+                  backgroundColor: "rgba(167, 139, 250, 0.2)",
+                  tension: 0.25,
+                  pointRadius: 3,
+                  pointHoverRadius: 5,
+                  spanGaps: true,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              parsing: false,
+              interaction: {
+                mode: "nearest",
+                intersect: false,
+              },
+              plugins: {
+                legend: { labels: { color: "#cbd5f5" } },
+                tooltip: {
+                  callbacks: {
+                    label(ctx) {
+                      const chart = ctx.chart;
+                      const pointsRef = chart?.$bitaxePoints || [];
+                      const item = pointsRef[ctx.dataIndex];
+                      const value = item?.display || formatDifficulty(ctx.parsed.y);
+                      const label = ctx.label ? ` @ ${ctx.label}` : "";
+                      return `Best: ${value}${label}`;
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { displayFormats: { hour: "MMM dd HH:mm", day: "MMM dd" } },
+                  ticks: { color: "#94a3b8" },
+                  grid: { color: "rgba(148, 163, 184, 0.2)" },
+                },
+                y: {
+                  type: "logarithmic",
+                  min: 1,
+                  ticks: {
+                    color: "#94a3b8",
+                    callback: (value) => formatDifficulty(value),
+                  },
+                  grid: { color: "rgba(148, 163, 184, 0.15)" },
+                },
+              },
+            },
+          });
+        }
+
+        bitaxeBestChart.data.labels = labels;
+        bitaxeBestChart.data.datasets[0].data = data;
+        bitaxeBestChart.$bitaxePoints = points;
+        bitaxeBestChart.update("none");
       }
 
       function updatePiChart(history) {
@@ -1350,6 +1477,7 @@
 
           renderRows(payload.data || []);
           renderSystem(payload.system);
+          updateBitaxeBestChart(payload.bitaxe_best_history);
           renderPi(payload.pi);
           updatePiChart(payload.pi_history);
           updatePiFullChart(payload.pi_history_full);
@@ -1381,6 +1509,7 @@
 
       renderRows(initialData || []);
       renderSystem(initialSystem);
+      updateBitaxeBestChart(initialBitaxeBestHistory);
       renderPi(initialPi);
       updatePiChart(initialPiHistory);
       updatePiFullChart(initialPiHistoryFull);
