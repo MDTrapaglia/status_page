@@ -103,6 +103,16 @@
         border-bottom: none;
       }
 
+      .clickable-row {
+        cursor: pointer;
+        transition: background 0.2s ease, transform 0.15s ease;
+      }
+
+      .clickable-row:hover {
+        background: rgba(148, 163, 184, 0.08);
+        transform: translateY(-1px);
+      }
+
       .price {
         font-size: 1.2rem;
         font-weight: 600;
@@ -865,6 +875,16 @@
             <td class="change ${changeClass(item.change_7d)}">${formatChange(item.change_7d)}</td>
             <td class="change ${changeClass(item.change_30d)}">${formatChange(item.change_30d)}</td>
           `;
+          if (item.tradingview) {
+            const url = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(
+              item.tradingview
+            )}`;
+            row.classList.add("clickable-row");
+            row.title = "Open TradingView chart";
+            row.addEventListener("click", () => {
+              window.open(url, "_blank", "noopener,noreferrer");
+            });
+          }
           pricesBody.appendChild(row);
           rows.push(row);
         });

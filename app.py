@@ -62,12 +62,27 @@ logger = logging.getLogger("status_page")
 logger.info("Logging initialized; writing to %s", LOG_PATH)
 
 COINS: List[Dict[str, str]] = [
-    {"name": "Bitcoin", "symbol": "BTCUSDT", "yf_symbol": "BTC-USD"},
-    {"name": "Ethereum", "symbol": "ETHUSDT", "yf_symbol": "ETH-USD"},
-    {"name": "Cardano", "symbol": "ADAUSDT", "yf_symbol": "ADA-USD"},
+    {
+        "name": "Bitcoin",
+        "symbol": "BTCUSDT",
+        "yf_symbol": "BTC-USD",
+        "tradingview": "BINANCE:BTCUSDT",
+    },
+    {
+        "name": "Ethereum",
+        "symbol": "ETHUSDT",
+        "yf_symbol": "ETH-USD",
+        "tradingview": "BINANCE:ETHUSDT",
+    },
+    {
+        "name": "Cardano",
+        "symbol": "ADAUSDT",
+        "yf_symbol": "ADA-USD",
+        "tradingview": "BINANCE:ADAUSDT",
+    },
 ]
 STOCKS: List[Dict[str, str]] = [
-    {"name": "Marvell Technology (MRVL)", "symbol": "MRVL"},
+    {"name": "Marvell Technology (MRVL)", "symbol": "MRVL", "tradingview": "NASDAQ:MRVL"},
 ]
 BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr"
 MARKET_CACHE: Dict[str, object] = {"data": [], "timestamp": None}
@@ -566,6 +581,7 @@ def _fetch_from_binance() -> List[Dict[str, float]]:
                 "change_7d": change_7d,
                 "change_30d": change_30d,
                 "spark_30d": spark_30d,
+                "tradingview": coin.get("tradingview"),
             }
         )
     return rows
@@ -586,6 +602,7 @@ def _fetch_from_yfinance() -> List[Dict[str, float]]:
                     "change_7d": snapshot.get("change_7d"),
                     "change_30d": snapshot.get("change_30d"),
                     "spark_30d": snapshot.get("spark_30d") or [],
+                    "tradingview": stock.get("tradingview"),
                 }
             )
     except Exception as exc:  # noqa: BLE001
