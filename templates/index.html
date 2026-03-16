@@ -1164,8 +1164,12 @@
         const labels = points.map((point) => point.x);
         const data = points.map((point) => ({ x: point.x, y: point.y, display: point.display }));
         bitaxeBestChartContainer.style.display = "block";
-        const minValue = Math.min(...points.map((point) => point.y).filter((v) => Number.isFinite(v)));
-        const paddedMin = Number.isFinite(minValue) && minValue > 0 ? Math.max(minValue * 0.8, 1e-6) : 1;
+        const values = points.map((point) => point.y).filter((v) => Number.isFinite(v) && v > 0);
+        const minValue = values.length ? Math.min(...values) : null;
+        const maxValue = values.length ? Math.max(...values) : null;
+        const paddedMin =
+          minValue !== null ? Math.max(minValue * 0.8, minValue * 0.1, 1e-9) : 1e-6;
+        const paddedMax = maxValue !== null ? maxValue * 1.1 : undefined;
 
         if (!bitaxeBestChart) {
           const ctx = bitaxeBestChartCanvas.getContext("2d");
@@ -1220,6 +1224,9 @@
                 y: {
                   type: "logarithmic",
                   min: paddedMin,
+                  suggestedMin: paddedMin,
+                  max: paddedMax,
+                  suggestedMax: paddedMax,
                   ticks: {
                     color: "#94a3b8",
                     callback: (value) => formatDifficulty(value),
@@ -1236,6 +1243,9 @@
         bitaxeBestChart.$bitaxePoints = points;
         if (bitaxeBestChart.options?.scales?.y) {
           bitaxeBestChart.options.scales.y.min = paddedMin;
+          bitaxeBestChart.options.scales.y.suggestedMin = paddedMin;
+          bitaxeBestChart.options.scales.y.max = paddedMax;
+          bitaxeBestChart.options.scales.y.suggestedMax = paddedMax;
         }
         bitaxeBestChart.update("none");
       }
