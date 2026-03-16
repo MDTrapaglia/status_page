@@ -77,6 +77,10 @@ The application is configured to run on port 3010 and is served under `/status/`
 
 # Check status
 ./status.sh
+
+# Restart safely
+./scripts/stop_all.sh && ./scripts/start_all.sh
+# (start_all.sh already stops any existing instance before launching)
 ```
 
 ### Nginx Configuration
