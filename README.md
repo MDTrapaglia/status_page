@@ -25,6 +25,7 @@ This project provides a clean and simple dashboard to monitor multiple URLs or s
 * **Clean Dashboard:** A minimalist UI to see at a glance service status, security metrics, and traffic data.
 * **Lightweight Architecture:** Designed for high efficiency with minimal resource consumption.
 * **Resource Performance History:** Tracks and stores historical consumption of system resources (CPU, Memory, I/O) to identify and troubleshoot performance bottlenecks.
+* **Bitaxe best-session history:** Persists the miner’s best session difficulty (90‑day retention) and shows it on a log-scale mini chart that only updates when the best diff improves.
 
 ## 📚 Documentation
 
@@ -83,3 +84,13 @@ The application is configured to run on port 3010 and is served under `/status/`
 The application is served at `https://matiastrapaglia.space/status/` with token authentication.
 
 For details on deploying new applications, see [the deployment guide](docs/agregar-nueva-pagina.md).
+
+## 📦 Data persistence
+
+The app stores lightweight history files alongside the codebase:
+
+- `bitaxe_best_history.jsonl`: best session difficulty snapshots (auto-pruned after 90 days).
+- `pi_history_full.jsonl`: long-term Raspberry Pi resource metrics (see Pi charts).
+- `session_state.json`: cumulative AxeOS session time tracker.
+
+All of these are ignored by git and refresh automatically during runtime.
