@@ -441,12 +441,12 @@
       <section class="card" id="pi-card" data-reveal data-reveal-order="2" style="display: none">
         <div class="device-header">
           <h2 id="pi-title">Raspberry Pi</h2>
-          <div id="pi-subtitle" class="meta"></div>
         </div>
         <div id="pi-highlight" class="highlight" style="display: none">
           <div class="label" id="pi-highlight-label"></div>
           <div class="value" id="pi-highlight-value"></div>
         </div>
+        <div id="pi-subtitle" class="meta"></div>
         <div class="chart-wrapper" id="pi-chart-wrapper" style="display: none">
           <canvas id="pi-chart"></canvas>
         </div>
@@ -478,6 +478,7 @@
         <div class="device-header">
           <h2>UFW blocks</h2>
           <div id="port-block-subtitle" class="meta"></div>
+          <div id="port-block-report" class="meta" style="display: none"></div>
         </div>
         <div id="port-block-plots" class="plots-grid"></div>
         <div id="port-block-error" class="error" style="display: none"></div>
@@ -528,6 +529,7 @@
       const legendPower = document.getElementById("legend-power");
       const portBlockCard = document.getElementById("port-block-card");
       const portBlockSubtitle = document.getElementById("port-block-subtitle");
+      const portBlockReport = document.getElementById("port-block-report");
       const portBlockPlots = document.getElementById("port-block-plots");
       const portBlockError = document.getElementById("port-block-error");
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
@@ -615,58 +617,73 @@
       const statusOverlayPlugin = {
         id: "statusOverlay",
         beforeDatasetsDraw(chart) {
-          const overlay = chart.$statusOverlays;
-          if (!overlay) return;
-          const { ctx, chartArea, scales } = chart;
-          if (!ctx || !chartArea || !scales?.x) return;
-          const top = chartArea.top;
-          const bottom = chartArea.bottom;
-          ctx.save();
-
-          const drawSpan = (span, color, options = {}) => {
-            if (!span?.start || !span?.end) return;
-            const startX = scales.x.getPixelForValue(span.start);
-            const endX = scales.x.getPixelForValue(span.end);
-            if (!Number.isFinite(startX) || !Number.isFinite(endX)) return;
-            const left = Math.min(startX, endX);
-            const width = Math.abs(endX - startX);
-            if (width < 2) return;
-            ctx.fillStyle = color;
-            ctx.fillRect(left, top, width, bottom - top);
-            if (options.outlineColor) {
-              ctx.strokeStyle = options.outlineColor;
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.moveTo(left, top);
-              ctx.lineTo(left, bottom);
-              ctx.moveTo(left + width, top);
-              ctx.lineTo(left + width, bottom);
-              ctx.stroke();
-            }
-            if (options.label && width > (options.labelMinWidth || 48)) {
-              ctx.font = "600 11px Inter, system-ui, -apple-system, sans-serif";
-              ctx.fillStyle = options.labelColor || options.outlineColor || color;
-              ctx.textAlign = "center";
-              ctx.textBaseline = "top";
-              ctx.shadowColor = "rgba(0,0,0,0.35)";
-              ctx.shadowBlur = 6;
-              ctx.fillText(options.label, left + width / 2, top + 6);
-              ctx.shadowBlur = 0;
-            }
-          };
-
-          (overlay.powerSpans || []).forEach((span) => drawSpan(span, STATUS_COLORS.power));
-          (overlay.offlineSpans || []).forEach((span) =>
-            drawSpan(span, STATUS_COLORS.offline, {
-              outlineColor: STATUS_COLORS.offlineBorder,
-              label: "OFFLINE",
-              labelColor: STATUS_COLORS.offlineText,
-              labelMinWidth: 56,
-            })
-          );
-          ctx.restore();
+          if (!chart?.$statusOverlayOnTop) {
+            drawStatusOverlay(chart);
+          }
+        },
+        afterDatasetsDraw(chart) {
+          if (chart?.$statusOverlayOnTop) {
+            drawStatusOverlay(chart);
+          }
         },
       };
+
+      function drawStatusOverlay(chart) {
+        const overlay = chart?.$statusOverlays;
+        if (!overlay) return;
+        const { ctx, chartArea, scales } = chart;
+        if (!ctx || !chartArea || !scales?.x) return;
+        const top = chartArea.top;
+        const bottom = chartArea.bottom;
+        const emphasis = chart.$statusOverlayEmphasis;
+        const offlineFill = emphasis ? "rgba(248, 113, 113, 0.6)" : STATUS_COLORS.offline;
+        const offlineBorder = emphasis ? "rgba(248, 113, 113, 0.95)" : STATUS_COLORS.offlineBorder;
+        const offlineText = emphasis ? "#ffe4e6" : STATUS_COLORS.offlineText;
+        ctx.save();
+
+        const drawSpan = (span, color, options = {}) => {
+          if (!span?.start || !span?.end) return;
+          const startX = scales.x.getPixelForValue(span.start);
+          const endX = scales.x.getPixelForValue(span.end);
+          if (!Number.isFinite(startX) || !Number.isFinite(endX)) return;
+          const left = Math.min(startX, endX);
+          const width = Math.abs(endX - startX);
+          if (width < 2) return;
+          ctx.fillStyle = color;
+          ctx.fillRect(left, top, width, bottom - top);
+          if (options.outlineColor) {
+            ctx.strokeStyle = options.outlineColor;
+            ctx.lineWidth = emphasis ? 2.5 : 2;
+            ctx.beginPath();
+            ctx.moveTo(left, top);
+            ctx.lineTo(left, bottom);
+            ctx.moveTo(left + width, top);
+            ctx.lineTo(left + width, bottom);
+            ctx.stroke();
+          }
+          if (options.label && width > (options.labelMinWidth || 48)) {
+            ctx.font = "600 11px Inter, system-ui, -apple-system, sans-serif";
+            ctx.fillStyle = options.labelColor || options.outlineColor || color;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.shadowColor = "rgba(0,0,0,0.45)";
+            ctx.shadowBlur = 8;
+            ctx.fillText(options.label, left + width / 2, top + 6);
+            ctx.shadowBlur = 0;
+          }
+        };
+
+        (overlay.powerSpans || []).forEach((span) => drawSpan(span, STATUS_COLORS.power));
+        (overlay.offlineSpans || []).forEach((span) =>
+          drawSpan(span, offlineFill, {
+            outlineColor: offlineBorder,
+            label: "OFFLINE",
+            labelColor: offlineText,
+            labelMinWidth: 56,
+          })
+        );
+        ctx.restore();
+      }
 
       Chart.register(statusOverlayPlugin);
 
@@ -832,6 +849,21 @@
         portBlockSubtitle.textContent = subtitleParts.join(" • ");
         portBlockSubtitle.style.display = subtitleParts.length ? "block" : "none";
 
+        const report = portBlock.report;
+        if (report?.url) {
+          const reportUpdated = report.updated_at ? new Date(report.updated_at) : null;
+          const reportLabel =
+            reportUpdated && !Number.isNaN(reportUpdated.getTime())
+              ? `Latest report (${reportUpdated.toLocaleString()})`
+              : "Latest report";
+          const reportUrl = cacheBustedUrl(report.url, report.updated_at || "");
+          portBlockReport.innerHTML = `<a href="${reportUrl}" target="_blank" rel="noopener">${reportLabel}</a>`;
+          portBlockReport.style.display = "block";
+        } else {
+          portBlockReport.style.display = "none";
+          portBlockReport.textContent = "";
+        }
+
         const plots = Array.isArray(portBlock.plots) ? portBlock.plots : [];
         portBlockPlots.innerHTML = "";
         if (plots.length) {
@@ -875,7 +907,7 @@
           portBlockError.textContent = "";
         }
 
-        const hasContent = plots.length || errorText;
+        const hasContent = plots.length || errorText || report?.url;
         portBlockCard.style.display = hasContent ? "block" : "none";
       }
 
@@ -1069,7 +1101,18 @@
           highlightLabelEl: piHighlightLabel,
           highlightValueEl: piHighlightValue,
           defaultTitle: "Raspberry Pi",
-          formatSubtitle() {
+          formatSubtitle(meta) {
+            if (meta?.updated_at) {
+              const updated = new Date(meta.updated_at);
+              if (!Number.isNaN(updated.getTime())) {
+                const time = updated.toLocaleTimeString("es-AR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                });
+                return `Actualizado ${time}`;
+              }
+            }
             return "";
           },
         });
@@ -1269,6 +1312,10 @@
         const series = buildPiSeries(points);
         const datasets = createPiDatasets(series);
         const overlay = buildStatusOverlay(points);
+        if (piChart) {
+          piChart.$statusOverlayOnTop = false;
+          piChart.$statusOverlayEmphasis = false;
+        }
 
         if (!piChart) {
           const ctx = piChartCanvas.getContext("2d");
@@ -1316,6 +1363,8 @@
               },
             },
           });
+          piChart.$statusOverlayOnTop = false;
+          piChart.$statusOverlayEmphasis = false;
           applyStatusOverlay(piChart, overlay);
           piChart.update("none");
         } else {
@@ -1374,6 +1423,10 @@
         const series = buildPiSeries(points);
         const datasets = createPiDatasets(series);
         const overlay = buildStatusOverlay(points);
+        if (piFullChart) {
+          piFullChart.$statusOverlayOnTop = true;
+          piFullChart.$statusOverlayEmphasis = true;
+        }
 
         if (!piFullChart) {
           const ctx = piFullChartCanvas.getContext("2d");
@@ -1431,6 +1484,8 @@
               },
             },
           });
+          piFullChart.$statusOverlayOnTop = true;
+          piFullChart.$statusOverlayEmphasis = true;
           applyStatusOverlay(piFullChart, overlay);
           piFullChart.update("none");
         } else {

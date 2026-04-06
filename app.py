@@ -27,6 +27,8 @@ LOG_PATH = Path("status_page.log")
 AUTH_TOKEN = "gaelito2025"
 PORT_BLOCK_ROOT = Path("/home/mtrapaglia/projects/port_block")
 PORT_BLOCK_PLOTS = PORT_BLOCK_ROOT / "ufw_plots"
+PORT_BLOCK_REPORT_DIR = Path(__file__).resolve().parent
+PORT_BLOCK_REPORT_GLOB = "port_block_report_*.md"
 PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg"}
 PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
@@ -424,6 +426,26 @@ def _calculate_energy_efficiency(payload: Dict[str, object]) -> Optional[float]:
     return power_watts / hash_rate_th
 
 
+def _find_latest_port_block_report() -> Optional[Dict[str, object]]:
+    latest: Optional[Path] = None
+    latest_time: Optional[datetime] = None
+    for path in sorted(PORT_BLOCK_REPORT_DIR.glob(PORT_BLOCK_REPORT_GLOB)):
+        try:
+            mtime_dt = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+        if latest_time is None or mtime_dt > latest_time:
+            latest_time = mtime_dt
+            latest = path
+    if not latest or not latest_time:
+        return None
+    return {
+        "filename": latest.name,
+        "updated_at": latest_time.isoformat(),
+        "url": f"port-block-report/{latest.name}",
+    }
+
+
 def _load_port_block_payload() -> Dict[str, object]:
     plots: List[Dict[str, object]] = []
     errors: List[str] = []
@@ -457,6 +479,7 @@ def _load_port_block_payload() -> Dict[str, object]:
     return {
         "plots": plots,
         "updated_at": latest_plot_time.isoformat() if latest_plot_time else None,
+        "report": _find_latest_port_block_report(),
         "error": "; ".join(errors) if errors else None,
     }
 
@@ -1072,11 +1095,44 @@ def _build_pi_history_series() -> Dict[str, List[Optional[float]]]:
 def _downsample_entries(entries: List[Dict[str, object]], max_points: int) -> List[Dict[str, object]]:
     if max_points <= 0 or len(entries) <= max_points:
         return list(entries)
-    step = max(1, math.ceil(len(entries) / max_points))
-    sampled = entries[::step]
-    if sampled and sampled[-1] is not entries[-1]:
-        sampled.append(entries[-1])
-    return sampled
+
+    total = len(entries)
+    step = max(1, math.ceil(total / max_points))
+
+    base_indices = set(range(0, total, step))
+    base_indices.add(total - 1)
+
+    forced_indices: set[int] = {0, total - 1}
+    for idx, entry in enumerate(entries):
+        online = entry.get("online")
+        if online is False:
+            forced_indices.update({idx, max(0, idx - 1), min(total - 1, idx + 1)})
+        if idx > 0:
+            prev_online = entries[idx - 1].get("online")
+            if online != prev_online:
+                forced_indices.update({idx - 1, idx})
+
+    keep_indices = base_indices | forced_indices
+    if len(keep_indices) <= max_points:
+        return [entries[i] for i in sorted(keep_indices)]
+
+    forced_sorted = sorted(forced_indices)
+    if len(forced_sorted) >= max_points:
+        step_forced = max(1, math.ceil(len(forced_sorted) / max_points))
+        forced_sampled = forced_sorted[::step_forced]
+        if forced_sampled and forced_sampled[-1] != forced_sorted[-1]:
+            forced_sampled.append(forced_sorted[-1])
+        return [entries[i] for i in forced_sampled]
+
+    remaining = [i for i in sorted(base_indices) if i not in forced_indices]
+    slots = max_points - len(forced_sorted)
+    if not remaining or slots <= 0:
+        return [entries[i] for i in forced_sorted]
+
+    step_remaining = max(1, math.ceil(len(remaining) / slots))
+    remaining_sampled = remaining[::step_remaining]
+    keep = sorted(set(forced_sorted) | set(remaining_sampled))
+    return [entries[i] for i in keep]
 
 
 def _build_pi_full_history_series() -> Dict[str, List[Optional[float]]]:
@@ -1211,6 +1267,7 @@ def _fetch_pi_stats(check_connectivity: bool = False) -> Tuple[Dict[str, object]
     display = {
         "meta": {
             "hostname": socket.gethostname(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         },
         "metrics": metrics,
         "highlight": highlight,
@@ -1310,7 +1367,7 @@ _start_pi_sampler()
 def _require_token():
     if request.endpoint == "static":
         return None
-    if request.endpoint == "port_block_asset":
+    if request.endpoint in {"port_block_asset", "port_block_report", "port_block_report_latest"}:
         token = request.args.get("token")
         if token == AUTH_TOKEN:
             return None
@@ -1337,6 +1394,44 @@ def port_block_asset(filename):
         abort(404)
     try:
         response = send_file(target)
+    except OSError:
+        abort(404)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@app.route("/port-block-report/latest")
+def port_block_report_latest():
+    report = _find_latest_port_block_report()
+    if not report:
+        abort(404)
+    target = (PORT_BLOCK_REPORT_DIR / report["filename"]).resolve()
+    if not target.exists() or not target.is_file():
+        abort(404)
+    try:
+        response = send_file(target, mimetype="text/markdown")
+    except OSError:
+        abort(404)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@app.route("/port-block-report/<path:filename>")
+def port_block_report(filename):
+    if not filename.startswith("port_block_report_") or not filename.endswith(".md"):
+        abort(404)
+    target = (PORT_BLOCK_REPORT_DIR / filename).resolve()
+    root = PORT_BLOCK_REPORT_DIR.resolve()
+    if root not in target.parents and target != root:
+        abort(404)
+    if not target.exists() or not target.is_file():
+        abort(404)
+    try:
+        response = send_file(target, mimetype="text/markdown")
     except OSError:
         abort(404)
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
