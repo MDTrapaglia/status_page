@@ -30,7 +30,7 @@ PORT_BLOCK_PLOTS = PORT_BLOCK_ROOT / "ufw_plots"
 PORT_BLOCK_REPORT_DIR = Path(__file__).resolve().parent
 PORT_BLOCK_REPORT_GLOB = "port_block_report_*.md"
 PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg"}
-PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
+PORT_BLOCK_EXCLUDED_PLOTS = set()
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
 
