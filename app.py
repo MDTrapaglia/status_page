@@ -29,7 +29,7 @@ PORT_BLOCK_ROOT = Path("/home/mtrapaglia/projects/port_block")
 PORT_BLOCK_PLOTS = PORT_BLOCK_ROOT / "ufw_plots"
 PORT_BLOCK_REPORT_DIR = Path(__file__).resolve().parent
 PORT_BLOCK_REPORT_GLOB = "port_block_report_*.md"
-PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg"}
+PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
 PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
@@ -452,7 +452,9 @@ def _load_port_block_payload() -> Dict[str, object]:
     latest_plot_time: Optional[datetime] = None
 
     try:
-        for path in sorted(PORT_BLOCK_PLOTS.glob("*")):
+        for path in sorted(PORT_BLOCK_PLOTS.rglob("*")):
+            if not path.is_file():
+                continue
             if path.suffix.lower() not in PORT_BLOCK_ALLOWED_SUFFIXES:
                 continue
             if path.stem in PORT_BLOCK_EXCLUDED_PLOTS:
