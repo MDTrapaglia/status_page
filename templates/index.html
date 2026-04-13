@@ -282,6 +282,7 @@
         font-size: 1.15rem;
         line-height: 1.6;
         color: #f8fafc;
+        white-space: pre-line;
       }
 
       .metric-row {
@@ -822,11 +823,20 @@
         `;
       }
 
+      function formatQuoteForDisplay(text) {
+        const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+        if (!cleaned) {
+          return "";
+        }
+        const verses = cleaned.split(/(?<=[.!?])\s+/).filter(Boolean);
+        return verses.length > 1 ? verses.join("\n\n") : cleaned;
+      }
+
       function renderQuote(quotePayload) {
         const text = quotePayload?.text;
         if (text) {
           quoteCard.style.display = "block";
-          quoteText.textContent = text;
+          quoteText.textContent = formatQuoteForDisplay(text);
         } else {
           quoteCard.style.display = "none";
           quoteText.textContent = "";
