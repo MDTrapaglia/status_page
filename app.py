@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 import math
+from urllib.parse import urljoin, urlparse
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -133,14 +134,22 @@ PI_FULL_HISTORY: List[Dict[str, object]] = []
 SESSION_STATE_PATH = Path("session_state.json")
 QUOTES_PATH = Path("acim_quotes.json")
 QUOTES_MAX_AGE = timedelta(days=7)
-QUOTES_REFRESH_INTERVAL = timedelta(hours=12)
-QUOTE_REQUEST_TIMEOUT = 5
+QUOTES_REFRESH_INTERVAL = timedelta(days=7)
+QUOTE_REQUEST_TIMEOUT = 6
+QUOTE_MIN_CHARS = 120
+QUOTE_MAX_CHARS = 1200
+QUOTE_TARGET_CHARS = 420
+QUOTE_CRAWL_LINK_LIMIT = 60
 QUOTE_CACHE: List[str] = []
 QUOTE_LAST_FETCH: Optional[datetime] = None
 QUOTE_LOCK = threading.Lock()
 QUOTE_SOURCES = [
-    {"url": "https://coachingdelser.com/frases-un-curso-de-milagros/", "selector": "blockquote, p"},
-    {"url": "https://www.enbuenasmanos.com/frases-del-libro-un-curso-de-milagros", "selector": "blockquote, li"},
+    {
+        "url": "https://acourseinmiraclesnow.com/read-acim-online/",
+        "selector": ".entry-content p, .entry-content li, article p, article li",
+        "crawl_links": True,
+        "link_include": ("course-miracles-", "/lesson-", "/chapter-", "read-acim-online/"),
+    }
 ]
 FALLBACK_QUOTES = [
     "Nada real puede ser amenazado. Nada irreal existe. En esto radica la paz de Dios.",
@@ -213,35 +222,205 @@ def _save_cached_quotes(quotes: List[str]) -> None:
         logger.warning("Could not save quotes to disk: %s", exc)
 
 
+def _extract_candidates_from_html(html: str, selector: str) -> List[str]:
+    soup = BeautifulSoup(html, "html.parser")
+    tags = soup.select(selector) if selector else []
+    if not tags:
+        tags = soup.find_all(["blockquote", "p", "li"])
+
+    extracted: List[str] = []
+    for tag in tags:
+        text = " ".join(tag.get_text(separator=" ").split())
+        if not text:
+            continue
+        extracted.append(text)
+    return extracted
+
+
+def _split_long_text(text: str, min_chars: int, max_chars: int, target_chars: int) -> List[str]:
+    if len(text) <= max_chars:
+        return [text] if len(text) >= min_chars else []
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    if not sentences:
+        return []
+
+    chunks: List[str] = []
+    buffer: List[str] = []
+    buffer_len = 0
+
+    def flush(force: bool = False):
+        nonlocal buffer, buffer_len
+        if not buffer:
+            return
+        joined = " ".join(buffer).strip()
+        if len(joined) >= min_chars and len(joined) <= max_chars:
+            chunks.append(joined)
+        elif len(joined) > max_chars:
+            words = joined.split()
+            word_buffer: List[str] = []
+            for word in words:
+                tentative = (" ".join(word_buffer + [word])).strip()
+                if len(tentative) > max_chars and word_buffer:
+                    part = " ".join(word_buffer).strip()
+                    if len(part) >= min_chars:
+                        chunks.append(part)
+                    word_buffer = [word]
+                else:
+                    word_buffer.append(word)
+            last = " ".join(word_buffer).strip()
+            if len(last) >= min_chars:
+                chunks.append(last)
+        elif force and chunks:
+            # append residual short tail to the previous chunk
+            combined = f"{chunks[-1]} {joined}".strip()
+            if len(combined) <= max_chars:
+                chunks[-1] = combined
+        buffer = []
+        buffer_len = 0
+
+    for sentence in sentences:
+        sentence_len = len(sentence)
+        if sentence_len > max_chars:
+            flush(force=True)
+            words = sentence.split()
+            partial: List[str] = []
+            for word in words:
+                tentative = (" ".join(partial + [word])).strip()
+                if len(tentative) > max_chars and partial:
+                    part = " ".join(partial).strip()
+                    if len(part) >= min_chars:
+                        chunks.append(part)
+                    partial = [word]
+                else:
+                    partial.append(word)
+            tail = " ".join(partial).strip()
+            if len(tail) >= min_chars:
+                chunks.append(tail)
+            continue
+
+        tentative_len = buffer_len + (1 if buffer else 0) + sentence_len
+        should_flush = buffer and (
+            tentative_len > max_chars or (buffer_len >= target_chars and sentence_len > min_chars // 2)
+        )
+        if should_flush:
+            flush()
+        buffer.append(sentence)
+        buffer_len += (1 if buffer_len else 0) + sentence_len
+
+    flush(force=True)
+    return chunks
+
+
+def _expand_quote_candidates(
+    candidates: List[str],
+    min_chars: int = QUOTE_MIN_CHARS,
+    max_chars: int = QUOTE_MAX_CHARS,
+    target_chars: int = QUOTE_TARGET_CHARS,
+) -> List[str]:
+    normalized: List[str] = []
+    for raw in candidates:
+        text = " ".join(str(raw).split())
+        if not text:
+            continue
+        normalized.append(text)
+
+    expanded: List[str] = []
+    short_buffer: List[str] = []
+    short_len = 0
+
+    def flush_short_buffer():
+        nonlocal short_buffer, short_len
+        if not short_buffer:
+            return
+        merged = " ".join(short_buffer).strip()
+        if len(merged) >= min_chars:
+            expanded.append(merged[:max_chars].strip())
+        short_buffer = []
+        short_len = 0
+
+    for text in normalized:
+        text_len = len(text)
+        if text_len < min_chars:
+            short_buffer.append(text)
+            short_len += text_len + 1
+            if short_len >= target_chars:
+                flush_short_buffer()
+            continue
+
+        flush_short_buffer()
+        if text_len <= max_chars:
+            expanded.append(text)
+            continue
+
+        expanded.extend(_split_long_text(text, min_chars=min_chars, max_chars=max_chars, target_chars=target_chars))
+
+    flush_short_buffer()
+
+    unique: List[str] = []
+    seen = set()
+    for item in expanded:
+        cleaned = " ".join(item.split())
+        if len(cleaned) < min_chars or len(cleaned) > max_chars:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        unique.append(cleaned)
+    return unique
+
+
 def _scrape_quotes() -> List[str]:
     scraped: List[str] = []
-    headers = {"User-Agent": "status-page/1.0 (+https://example.local)"}
+    headers = {"User-Agent": "status-page/2.0 (+https://matiastrapaglia.space/status/)"}
+
     for source in QUOTE_SOURCES:
         url = source["url"]
-        selector = source.get("selector") or "blockquote"
+        selector = source.get("selector") or "blockquote, p, li"
+        crawl_links = bool(source.get("crawl_links"))
+        link_include = tuple(source.get("link_include") or ())
+
         try:
             resp = requests.get(url, headers=headers, timeout=QUOTE_REQUEST_TIMEOUT)
             resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
-            candidates = soup.select(selector) or soup.find_all("blockquote")
-            for tag in candidates:
-                text = " ".join(tag.get_text(separator=" ").split())
-                if not text:
-                    continue
-                if len(text) < 40 or len(text) > 320:
-                    continue
-                scraped.append(text)
+            scraped.extend(_extract_candidates_from_html(resp.text, selector))
+
+            if crawl_links:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                base_host = urlparse(url).netloc
+                links: List[str] = []
+                seen_links = set()
+                for anchor in soup.select("a[href]"):
+                    href = anchor.get("href") or ""
+                    full_url = urljoin(url, href)
+                    parsed = urlparse(full_url)
+                    if parsed.netloc != base_host:
+                        continue
+                    if not parsed.scheme.startswith("http"):
+                        continue
+                    if link_include and not any(token in full_url for token in link_include):
+                        continue
+                    normalized = full_url.split("#")[0]
+                    if normalized in seen_links:
+                        continue
+                    seen_links.add(normalized)
+                    links.append(normalized)
+                    if len(links) >= QUOTE_CRAWL_LINK_LIMIT:
+                        break
+
+                for link in links:
+                    try:
+                        link_resp = requests.get(link, headers=headers, timeout=QUOTE_REQUEST_TIMEOUT)
+                        link_resp.raise_for_status()
+                        scraped.extend(_extract_candidates_from_html(link_resp.text, selector))
+                    except requests.RequestException:
+                        continue
+
         except requests.RequestException as exc:
             logger.warning("Could not scrape %s: %s", url, exc)
             continue
-    unique = []
-    seen = set()
-    for item in scraped:
-        if item in seen:
-            continue
-        seen.add(item)
-        unique.append(item)
-    return unique
+
+    return _expand_quote_candidates(scraped)
 
 
 def _get_quote_file_mtime() -> Optional[datetime]:
