@@ -1,4 +1,9 @@
-from app import _expand_quote_candidates
+from app import (
+    QUOTE_MAX_CHARS,
+    QUOTE_MIN_CHARS,
+    QUOTE_TARGET_CHARS,
+    _expand_quote_candidates,
+)
 
 
 def test_expand_quote_candidates_splits_long_text_into_bounded_passages():
@@ -24,3 +29,9 @@ def test_expand_quote_candidates_merges_short_blocks_into_readable_capture():
     assert len(passages) >= 1
     assert all(len(p) >= 70 for p in passages)
     assert "Love is the answer." in passages[0]
+
+
+def test_default_quote_size_targets_doubled_longer_passages():
+    assert QUOTE_MIN_CHARS == 240
+    assert QUOTE_TARGET_CHARS == 840
+    assert QUOTE_MAX_CHARS == 2400
