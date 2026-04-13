@@ -134,7 +134,7 @@ PI_FULL_HISTORY: List[Dict[str, object]] = []
 SESSION_STATE_PATH = Path("session_state.json")
 QUOTES_PATH = Path("acim_quotes.json")
 QUOTES_MAX_AGE = timedelta(days=7)
-QUOTES_REFRESH_INTERVAL = timedelta(days=7)
+QUOTES_REFRESH_INTERVAL = timedelta(days=1)
 QUOTE_REQUEST_TIMEOUT = 6
 QUOTE_MIN_CHARS = 120
 QUOTE_MAX_CHARS = 1200
