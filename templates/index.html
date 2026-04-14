@@ -348,6 +348,21 @@
         color: #94a3b8;
       }
 
+      .scanner-highlight {
+        margin-top: 1rem;
+        background: linear-gradient(120deg, rgba(251, 146, 60, 0.35), rgba(15, 23, 42, 0.65));
+        border: 1px solid rgba(251, 146, 60, 0.6);
+      }
+
+      .scanner-highlight .label {
+        color: #fed7aa;
+      }
+
+      .scanner-highlight .value {
+        font-size: clamp(2rem, 5vw, 3rem);
+        color: #fff7ed;
+      }
+
       .table-scroll {
         width: 100%;
         overflow-x: auto;
@@ -481,6 +496,10 @@
           <div id="port-block-subtitle" class="meta"></div>
           <div id="port-block-report" class="meta" style="display: none"></div>
         </div>
+        <div id="port-block-scanner-highlight" class="highlight scanner-highlight" style="display: none">
+          <div class="label">Scanner IPs (24h)</div>
+          <div class="value" id="port-block-scanner-value"></div>
+        </div>
         <div id="port-block-plots" class="plots-grid"></div>
         <div id="port-block-error" class="error" style="display: none"></div>
       </section>
@@ -531,6 +550,8 @@
       const portBlockCard = document.getElementById("port-block-card");
       const portBlockSubtitle = document.getElementById("port-block-subtitle");
       const portBlockReport = document.getElementById("port-block-report");
+      const portBlockScannerHighlight = document.getElementById("port-block-scanner-highlight");
+      const portBlockScannerValue = document.getElementById("port-block-scanner-value");
       const portBlockPlots = document.getElementById("port-block-plots");
       const portBlockError = document.getElementById("port-block-error");
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
@@ -859,6 +880,13 @@
         const scannerIpCount = Number(portBlock.scanner_ip_count);
         if (Number.isFinite(scannerIpCount) && scannerIpCount > 0) {
           subtitleParts.push(`Scanner IPs (24h): ${scannerIpCount}`);
+          if (portBlockScannerHighlight && portBlockScannerValue) {
+            portBlockScannerHighlight.style.display = "block";
+            portBlockScannerValue.textContent = String(scannerIpCount);
+          }
+        } else if (portBlockScannerHighlight && portBlockScannerValue) {
+          portBlockScannerHighlight.style.display = "none";
+          portBlockScannerValue.textContent = "";
         }
         portBlockSubtitle.textContent = subtitleParts.join(" • ");
         portBlockSubtitle.style.display = subtitleParts.length ? "block" : "none";
@@ -921,7 +949,8 @@
           portBlockError.textContent = "";
         }
 
-        const hasContent = plots.length || errorText || report?.url;
+        const hasScannerHighlight = Number.isFinite(scannerIpCount) && scannerIpCount > 0;
+        const hasContent = plots.length || errorText || report?.url || hasScannerHighlight;
         portBlockCard.style.display = hasContent ? "block" : "none";
       }
 
