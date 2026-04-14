@@ -625,13 +625,16 @@ def _find_latest_port_block_report() -> Optional[Dict[str, object]]:
     }
 
 
-def _extract_scanner_ip_count(report_text: str) -> Optional[int]:
+def _extract_scanner_stats(report_text: str) -> Dict[str, Optional[int]]:
     if not report_text:
-        return None
+        return {"ip_count": None, "monitoring_count_24h": None}
 
     lines = [line.strip() for line in report_text.splitlines()]
     in_candidates = False
-    count = 0
+    ip_count = 0
+    monitoring_count_24h = 0
+    candidate_pattern = re.compile(r"^-\s+\d{1,3}(?:\.\d{1,3}){3}\s+\((\d+)\)")
+
     for line in lines:
         if not line:
             continue
@@ -639,30 +642,48 @@ def _extract_scanner_ip_count(report_text: str) -> Optional[int]:
         if lowered.startswith("## "):
             in_candidates = lowered == "## candidates"
             continue
-        if in_candidates and re.match(r"^-\s+\d{1,3}(?:\.\d{1,3}){3}\s+\(\d+\)", line):
-            count += 1
+        if not in_candidates:
+            continue
 
-    return count if count > 0 else None
+        match = candidate_pattern.match(line)
+        if not match:
+            continue
+
+        ip_count += 1
+        monitoring_count_24h += int(match.group(1))
+
+    return {
+        "ip_count": ip_count if ip_count > 0 else None,
+        "monitoring_count_24h": monitoring_count_24h if monitoring_count_24h > 0 else None,
+    }
 
 
-def _read_scanner_ip_count_from_report(report: Optional[Dict[str, object]]) -> Optional[int]:
+def _extract_scanner_ip_count(report_text: str) -> Optional[int]:
+    return _extract_scanner_stats(report_text).get("ip_count")
+
+
+def _extract_scanner_monitoring_count(report_text: str) -> Optional[int]:
+    return _extract_scanner_stats(report_text).get("monitoring_count_24h")
+
+
+def _read_scanner_stats_from_report(report: Optional[Dict[str, object]]) -> Dict[str, Optional[int]]:
     if not report:
-        return None
+        return {"ip_count": None, "monitoring_count_24h": None}
     filename = report.get("filename")
     if not filename:
-        return None
+        return {"ip_count": None, "monitoring_count_24h": None}
 
     report_path = (PORT_BLOCK_REPORT_DIR / str(filename)).resolve()
     root = PORT_BLOCK_REPORT_DIR.resolve()
     if root not in report_path.parents and report_path != root:
-        return None
+        return {"ip_count": None, "monitoring_count_24h": None}
 
     try:
         report_text = report_path.read_text(encoding="utf-8")
     except OSError:
-        return None
+        return {"ip_count": None, "monitoring_count_24h": None}
 
-    return _extract_scanner_ip_count(report_text)
+    return _extract_scanner_stats(report_text)
 
 
 def _load_port_block_payload() -> Dict[str, object]:
@@ -698,13 +719,14 @@ def _load_port_block_payload() -> Dict[str, object]:
         errors.append(f"Could not read plots: {exc}")
 
     report = _find_latest_port_block_report()
-    scanner_ip_count = _read_scanner_ip_count_from_report(report)
+    scanner_stats = _read_scanner_stats_from_report(report)
 
     return {
         "plots": plots,
         "updated_at": latest_plot_time.isoformat() if latest_plot_time else None,
         "report": report,
-        "scanner_ip_count": scanner_ip_count,
+        "scanner_ip_count": scanner_stats.get("ip_count"),
+        "monitoring_count_24h": scanner_stats.get("monitoring_count_24h"),
         "error": "; ".join(errors) if errors else None,
     }
 

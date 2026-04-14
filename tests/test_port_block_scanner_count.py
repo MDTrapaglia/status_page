@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from app import _extract_scanner_ip_count, _load_port_block_payload
+from app import _extract_scanner_ip_count, _extract_scanner_monitoring_count, _load_port_block_payload
 
 
 def test_extract_scanner_ip_count_counts_candidates_section_only():
@@ -21,6 +21,21 @@ def test_extract_scanner_ip_count_counts_candidates_section_only():
 """
 
     assert _extract_scanner_ip_count(report_text) == 3
+
+
+def test_extract_scanner_monitoring_count_sums_candidate_attempts_only():
+    report_text = """# Port-block report (2026-04-12)
+
+## Candidates
+- 1.1.1.1 (120)
+- 2.2.2.2 (80)
+- 3.3.3.3 (30)
+
+## Applied rules
+- 1.1.1.1 (120) → OK
+"""
+
+    assert _extract_scanner_monitoring_count(report_text) == 230
 
 
 def test_load_port_block_payload_exposes_scanner_ip_count_from_latest_report(tmp_path, monkeypatch):
@@ -46,3 +61,4 @@ def test_load_port_block_payload_exposes_scanner_ip_count_from_latest_report(tmp
     payload = _load_port_block_payload()
 
     assert payload["scanner_ip_count"] == 2
+    assert payload["monitoring_count_24h"] == 65

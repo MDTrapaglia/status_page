@@ -497,7 +497,7 @@
           <div id="port-block-report" class="meta" style="display: none"></div>
         </div>
         <div id="port-block-scanner-highlight" class="highlight scanner-highlight" style="display: none">
-          <div class="label">Scanner IPs (24h)</div>
+          <div class="label">24Hs monitoring count</div>
           <div class="value" id="port-block-scanner-value"></div>
         </div>
         <div id="port-block-plots" class="plots-grid"></div>
@@ -879,10 +879,14 @@
         }
         const scannerIpCount = Number(portBlock.scanner_ip_count);
         if (Number.isFinite(scannerIpCount) && scannerIpCount > 0) {
-          subtitleParts.push(`Scanner IPs (24h): ${scannerIpCount}`);
+          subtitleParts.push(`Unique scanner IPs (24h): ${scannerIpCount}`);
+        }
+
+        const monitoringCount24h = Number(portBlock.monitoring_count_24h);
+        if (Number.isFinite(monitoringCount24h) && monitoringCount24h > 0) {
           if (portBlockScannerHighlight && portBlockScannerValue) {
             portBlockScannerHighlight.style.display = "block";
-            portBlockScannerValue.textContent = String(scannerIpCount);
+            portBlockScannerValue.textContent = monitoringCount24h.toLocaleString();
           }
         } else if (portBlockScannerHighlight && portBlockScannerValue) {
           portBlockScannerHighlight.style.display = "none";
@@ -949,7 +953,7 @@
           portBlockError.textContent = "";
         }
 
-        const hasScannerHighlight = Number.isFinite(scannerIpCount) && scannerIpCount > 0;
+        const hasScannerHighlight = Number.isFinite(monitoringCount24h) && monitoringCount24h > 0;
         const hasContent = plots.length || errorText || report?.url || hasScannerHighlight;
         portBlockCard.style.display = hasContent ? "block" : "none";
       }
