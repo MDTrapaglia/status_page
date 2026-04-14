@@ -856,6 +856,10 @@
             subtitleParts.push(`Updated ${updated.toLocaleString()}`);
           }
         }
+        const scannerIpCount = Number(portBlock.scanner_ip_count);
+        if (Number.isFinite(scannerIpCount) && scannerIpCount > 0) {
+          subtitleParts.push(`Scanner IPs (24h): ${scannerIpCount}`);
+        }
         portBlockSubtitle.textContent = subtitleParts.join(" • ");
         portBlockSubtitle.style.display = subtitleParts.length ? "block" : "none";
 

@@ -625,6 +625,46 @@ def _find_latest_port_block_report() -> Optional[Dict[str, object]]:
     }
 
 
+def _extract_scanner_ip_count(report_text: str) -> Optional[int]:
+    if not report_text:
+        return None
+
+    lines = [line.strip() for line in report_text.splitlines()]
+    in_candidates = False
+    count = 0
+    for line in lines:
+        if not line:
+            continue
+        lowered = line.lower()
+        if lowered.startswith("## "):
+            in_candidates = lowered == "## candidates"
+            continue
+        if in_candidates and re.match(r"^-\s+\d{1,3}(?:\.\d{1,3}){3}\s+\(\d+\)", line):
+            count += 1
+
+    return count if count > 0 else None
+
+
+def _read_scanner_ip_count_from_report(report: Optional[Dict[str, object]]) -> Optional[int]:
+    if not report:
+        return None
+    filename = report.get("filename")
+    if not filename:
+        return None
+
+    report_path = (PORT_BLOCK_REPORT_DIR / str(filename)).resolve()
+    root = PORT_BLOCK_REPORT_DIR.resolve()
+    if root not in report_path.parents and report_path != root:
+        return None
+
+    try:
+        report_text = report_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    return _extract_scanner_ip_count(report_text)
+
+
 def _load_port_block_payload() -> Dict[str, object]:
     plots: List[Dict[str, object]] = []
     errors: List[str] = []
@@ -657,10 +697,14 @@ def _load_port_block_payload() -> Dict[str, object]:
     except OSError as exc:
         errors.append(f"Could not read plots: {exc}")
 
+    report = _find_latest_port_block_report()
+    scanner_ip_count = _read_scanner_ip_count_from_report(report)
+
     return {
         "plots": plots,
         "updated_at": latest_plot_time.isoformat() if latest_plot_time else None,
-        "report": _find_latest_port_block_report(),
+        "report": report,
+        "scanner_ip_count": scanner_ip_count,
         "error": "; ".join(errors) if errors else None,
     }
 
