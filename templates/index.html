@@ -363,6 +363,21 @@
         color: #fff7ed;
       }
 
+      .scanner-secondary-highlight {
+        margin-top: 0.75rem;
+        background: rgba(15, 23, 42, 0.55);
+        border: 1px solid rgba(125, 211, 252, 0.35);
+      }
+
+      .scanner-secondary-highlight .label {
+        color: #bae6fd;
+      }
+
+      .scanner-secondary-highlight .value {
+        font-size: clamp(1.2rem, 3vw, 1.7rem);
+        color: #e0f2fe;
+      }
+
       .table-scroll {
         width: 100%;
         overflow-x: auto;
@@ -500,6 +515,10 @@
           <div class="label">24Hs monitoring count</div>
           <div class="value" id="port-block-scanner-value"></div>
         </div>
+        <div id="port-block-unique-highlight" class="highlight scanner-secondary-highlight" style="display: none">
+          <div class="label">Unique source IPs (24h)</div>
+          <div class="value" id="port-block-unique-value"></div>
+        </div>
         <div id="port-block-plots" class="plots-grid"></div>
         <div id="port-block-error" class="error" style="display: none"></div>
       </section>
@@ -552,6 +571,8 @@
       const portBlockReport = document.getElementById("port-block-report");
       const portBlockScannerHighlight = document.getElementById("port-block-scanner-highlight");
       const portBlockScannerValue = document.getElementById("port-block-scanner-value");
+      const portBlockUniqueHighlight = document.getElementById("port-block-unique-highlight");
+      const portBlockUniqueValue = document.getElementById("port-block-unique-value");
       const portBlockPlots = document.getElementById("port-block-plots");
       const portBlockError = document.getElementById("port-block-error");
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
@@ -879,7 +900,13 @@
         }
         const scannerIpCount = Number(portBlock.scanner_ip_count);
         if (Number.isFinite(scannerIpCount) && scannerIpCount > 0) {
-          subtitleParts.push(`Unique source IPs (24h): ${scannerIpCount}`);
+          if (portBlockUniqueHighlight && portBlockUniqueValue) {
+            portBlockUniqueHighlight.style.display = "block";
+            portBlockUniqueValue.textContent = scannerIpCount.toLocaleString();
+          }
+        } else if (portBlockUniqueHighlight && portBlockUniqueValue) {
+          portBlockUniqueHighlight.style.display = "none";
+          portBlockUniqueValue.textContent = "";
         }
 
         const monitoringCount24h = Number(portBlock.monitoring_count_24h);
