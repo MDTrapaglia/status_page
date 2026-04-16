@@ -1280,6 +1280,11 @@
 
         const labels = points.map((point) => point.x);
         const data = points.map((point) => ({ x: point.x, y: point.y, display: point.display }));
+        const dataLog = points.map((point) => ({
+          x: point.x,
+          y: Number.isFinite(point.y) && point.y > 0 ? point.y : null,
+          display: point.display,
+        }));
         bitaxeBestChartContainer.style.display = "block";
         const values = points.map((point) => point.y).filter((v) => Number.isFinite(v));
         const minValue = values.length ? Math.min(...values) : null;
@@ -1289,6 +1294,12 @@
         const paddedMin = minValue !== null && range !== null ? Math.max(minValue - range * 0.1, 0) : undefined;
         const paddedMax = maxValue !== null && range !== null ? maxValue + range * 0.1 : undefined;
 
+        const positiveValues = values.filter((v) => v > 0);
+        const minValueLog = positiveValues.length ? Math.min(...positiveValues) : null;
+        const maxValueLog = positiveValues.length ? Math.max(...positiveValues) : null;
+        const paddedMinLog = minValueLog !== null ? Math.max(minValueLog * 0.8, minValueLog * 0.1, 1e-9) : undefined;
+        const paddedMaxLog = maxValueLog !== null ? maxValueLog * 1.1 : undefined;
+
         if (!bitaxeBestChart) {
           const ctx = bitaxeBestChartCanvas.getContext("2d");
           bitaxeBestChart = new Chart(ctx, {
@@ -1297,7 +1308,7 @@
               labels,
               datasets: [
                 {
-                  label: "Best session difficulty",
+                  label: "Best session difficulty (linear)",
                   data,
                   borderColor: "#a78bfa",
                   backgroundColor: "rgba(167, 139, 250, 0.2)",
@@ -1305,6 +1316,18 @@
                   pointRadius: 3,
                   pointHoverRadius: 5,
                   spanGaps: true,
+                  yAxisID: "y",
+                },
+                {
+                  label: "Best session difficulty (log)",
+                  data: dataLog,
+                  borderColor: "#22d3ee",
+                  backgroundColor: "rgba(34, 211, 238, 0.2)",
+                  tension: 0.25,
+                  pointRadius: 0,
+                  pointHoverRadius: 4,
+                  spanGaps: true,
+                  yAxisID: "yLog",
                 },
               ],
             },
@@ -1346,10 +1369,23 @@
                   max: paddedMax,
                   suggestedMax: paddedMax,
                   ticks: {
-                    color: "#94a3b8",
+                    color: "#a78bfa",
                     callback: (value) => formatDifficulty(value),
                   },
                   grid: { color: "rgba(148, 163, 184, 0.15)" },
+                },
+                yLog: {
+                  type: "logarithmic",
+                  position: "right",
+                  min: paddedMinLog,
+                  suggestedMin: paddedMinLog,
+                  max: paddedMaxLog,
+                  suggestedMax: paddedMaxLog,
+                  ticks: {
+                    color: "#22d3ee",
+                    callback: (value) => formatDifficulty(value),
+                  },
+                  grid: { drawOnChartArea: false, color: "rgba(34, 211, 238, 0.25)" },
                 },
               },
             },
@@ -1358,12 +1394,21 @@
 
         bitaxeBestChart.data.labels = labels;
         bitaxeBestChart.data.datasets[0].data = data;
+        if (bitaxeBestChart.data.datasets[1]) {
+          bitaxeBestChart.data.datasets[1].data = dataLog;
+        }
         bitaxeBestChart.$bitaxePoints = points;
         if (bitaxeBestChart.options?.scales?.y) {
           bitaxeBestChart.options.scales.y.min = paddedMin;
           bitaxeBestChart.options.scales.y.suggestedMin = paddedMin;
           bitaxeBestChart.options.scales.y.max = paddedMax;
           bitaxeBestChart.options.scales.y.suggestedMax = paddedMax;
+        }
+        if (bitaxeBestChart.options?.scales?.yLog) {
+          bitaxeBestChart.options.scales.yLog.min = paddedMinLog;
+          bitaxeBestChart.options.scales.yLog.suggestedMin = paddedMinLog;
+          bitaxeBestChart.options.scales.yLog.max = paddedMaxLog;
+          bitaxeBestChart.options.scales.yLog.suggestedMax = paddedMaxLog;
         }
         bitaxeBestChart.update("none");
       }
