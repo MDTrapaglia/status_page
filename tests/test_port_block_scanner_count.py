@@ -4,6 +4,7 @@ from app import (
     _extract_scanner_ip_count,
     _extract_scanner_monitoring_count,
     _extract_total_blocks_24h,
+    _extract_unique_source_ips_24h,
     _load_port_block_payload,
 )
 
@@ -51,7 +52,17 @@ def test_extract_total_blocks_24h_reads_ufw_report_total():
     assert _extract_total_blocks_24h(ufw_report_text) == 4458
 
 
-def test_load_port_block_payload_uses_ufw_report_total_for_monitoring_count(tmp_path, monkeypatch):
+def test_extract_unique_source_ips_24h_reads_ufw_report_unique_total():
+    ufw_report_text = """# UFW Block Report
+- Window: last 24.0 hours
+- Total blocks: 4,458
+- Unique source IPs: 2,372
+"""
+
+    assert _extract_unique_source_ips_24h(ufw_report_text) == 2372
+
+
+def test_load_port_block_payload_uses_ufw_report_totals_for_monitoring_and_unique_ips(tmp_path, monkeypatch):
     report_old = tmp_path / "port_block_report_2026-04-10.md"
     report_new = tmp_path / "port_block_report_2026-04-11.md"
     report_old.write_text("## Candidates\n- 10.0.0.1 (20)\n", encoding="utf-8")
@@ -68,7 +79,7 @@ def test_load_port_block_payload_uses_ufw_report_total_for_monitoring_count(tmp_
     plots_dir.mkdir(parents=True)
 
     ufw_report = plots_root / "ufw_report.md"
-    ufw_report.write_text("- Total blocks: 1234\n", encoding="utf-8")
+    ufw_report.write_text("- Total blocks: 1234\n- Unique source IPs: 999\n", encoding="utf-8")
 
     monkeypatch.setattr("app.PORT_BLOCK_REPORT_DIR", tmp_path)
     monkeypatch.setattr("app.PORT_BLOCK_ROOT", plots_root)
@@ -77,5 +88,5 @@ def test_load_port_block_payload_uses_ufw_report_total_for_monitoring_count(tmp_
 
     payload = _load_port_block_payload()
 
-    assert payload["scanner_ip_count"] == 2
+    assert payload["scanner_ip_count"] == 999
     assert payload["monitoring_count_24h"] == 1234

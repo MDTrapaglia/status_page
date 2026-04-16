@@ -879,7 +879,7 @@
         }
         const scannerIpCount = Number(portBlock.scanner_ip_count);
         if (Number.isFinite(scannerIpCount) && scannerIpCount > 0) {
-          subtitleParts.push(`Unique scanner IPs (24h): ${scannerIpCount}`);
+          subtitleParts.push(`Unique source IPs (24h): ${scannerIpCount}`);
         }
 
         const monitoringCount24h = Number(portBlock.monitoring_count_24h);

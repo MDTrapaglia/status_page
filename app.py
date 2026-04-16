@@ -711,6 +711,30 @@ def _read_total_blocks_from_ufw_report() -> Optional[int]:
     return _extract_total_blocks_24h(report_text)
 
 
+def _extract_unique_source_ips_24h(report_text: str) -> Optional[int]:
+    if not report_text:
+        return None
+
+    match = re.search(r"^-\s*Unique\s+source\s+IPs:\s*([0-9][0-9,]*)\s*$", report_text, flags=re.MULTILINE | re.IGNORECASE)
+    if not match:
+        return None
+
+    try:
+        unique_source_ips = int(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+    return unique_source_ips if unique_source_ips > 0 else None
+
+
+def _read_unique_source_ips_from_ufw_report() -> Optional[int]:
+    try:
+        report_text = PORT_BLOCK_UFW_REPORT.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return _extract_unique_source_ips_24h(report_text)
+
+
 def _load_port_block_payload() -> Dict[str, object]:
     plots: List[Dict[str, object]] = []
     errors: List[str] = []
@@ -746,12 +770,13 @@ def _load_port_block_payload() -> Dict[str, object]:
     report = _find_latest_port_block_report()
     scanner_stats = _read_scanner_stats_from_report(report)
     total_blocks_24h = _read_total_blocks_from_ufw_report()
+    unique_source_ips_24h = _read_unique_source_ips_from_ufw_report()
 
     return {
         "plots": plots,
         "updated_at": latest_plot_time.isoformat() if latest_plot_time else None,
         "report": report,
-        "scanner_ip_count": scanner_stats.get("ip_count"),
+        "scanner_ip_count": unique_source_ips_24h or scanner_stats.get("ip_count"),
         "monitoring_count_24h": total_blocks_24h or scanner_stats.get("monitoring_count_24h"),
         "error": "; ".join(errors) if errors else None,
     }
