@@ -28,6 +28,7 @@ LOG_PATH = Path("status_page.log")
 AUTH_TOKEN = "gaelito2025"
 PORT_BLOCK_ROOT = Path("/home/mtrapaglia/projects/port_block")
 PORT_BLOCK_PLOTS = PORT_BLOCK_ROOT / "ufw_plots"
+PORT_BLOCK_UFW_REPORT = PORT_BLOCK_ROOT / "ufw_report.md"
 PORT_BLOCK_REPORT_DIR = Path(__file__).resolve().parent
 PORT_BLOCK_REPORT_GLOB = "port_block_report_*.md"
 PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
@@ -686,6 +687,30 @@ def _read_scanner_stats_from_report(report: Optional[Dict[str, object]]) -> Dict
     return _extract_scanner_stats(report_text)
 
 
+def _extract_total_blocks_24h(report_text: str) -> Optional[int]:
+    if not report_text:
+        return None
+
+    match = re.search(r"^-\s*Total\s+blocks:\s*([0-9][0-9,]*)\s*$", report_text, flags=re.MULTILINE | re.IGNORECASE)
+    if not match:
+        return None
+
+    try:
+        total_blocks = int(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+    return total_blocks if total_blocks > 0 else None
+
+
+def _read_total_blocks_from_ufw_report() -> Optional[int]:
+    try:
+        report_text = PORT_BLOCK_UFW_REPORT.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return _extract_total_blocks_24h(report_text)
+
+
 def _load_port_block_payload() -> Dict[str, object]:
     plots: List[Dict[str, object]] = []
     errors: List[str] = []
@@ -720,13 +745,14 @@ def _load_port_block_payload() -> Dict[str, object]:
 
     report = _find_latest_port_block_report()
     scanner_stats = _read_scanner_stats_from_report(report)
+    total_blocks_24h = _read_total_blocks_from_ufw_report()
 
     return {
         "plots": plots,
         "updated_at": latest_plot_time.isoformat() if latest_plot_time else None,
         "report": report,
         "scanner_ip_count": scanner_stats.get("ip_count"),
-        "monitoring_count_24h": scanner_stats.get("monitoring_count_24h"),
+        "monitoring_count_24h": total_blocks_24h or scanner_stats.get("monitoring_count_24h"),
         "error": "; ".join(errors) if errors else None,
     }
 
