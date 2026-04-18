@@ -5,11 +5,12 @@ Uso rápido:
   python scripts/internet_speed_logger.py
 
 Variables de entorno opcionales:
-  MONITOR_URL=https://proof.ovh.net/files/10Mb.dat
+  MONITOR_URL=http://ipv4.download.thinkbroadband.com/5MB.zip
   LIMIT_RATE=80K
-  RANGE_BYTES=1048576
-  INTERVAL_SECONDS=15
-  MAX_TIME_SECONDS=60
+  RANGE_BYTES=32768
+  INTERVAL_SECONDS=1
+  MAX_TIME_SECONDS=4
+  CONNECT_TIMEOUT_SECONDS=2
   DB_PATH=data/internet_monitor.db
 """
 
@@ -29,9 +30,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "data" / "internet_monitor.db"))).expanduser()
 MONITOR_URL = os.getenv("MONITOR_URL", "http://ipv4.download.thinkbroadband.com/5MB.zip")
 LIMIT_RATE = os.getenv("LIMIT_RATE", "80K")
-RANGE_BYTES = int(os.getenv("RANGE_BYTES", "1048576"))
-INTERVAL_SECONDS = float(os.getenv("INTERVAL_SECONDS", "2"))
-MAX_TIME_SECONDS = int(os.getenv("MAX_TIME_SECONDS", "60"))
+RANGE_BYTES = int(os.getenv("RANGE_BYTES", "32768"))
+INTERVAL_SECONDS = float(os.getenv("INTERVAL_SECONDS", "1"))
+MAX_TIME_SECONDS = int(os.getenv("MAX_TIME_SECONDS", "4"))
+CONNECT_TIMEOUT_SECONDS = int(os.getenv("CONNECT_TIMEOUT_SECONDS", "2"))
 
 STOP = False
 
@@ -86,6 +88,8 @@ def _run_probe() -> Dict[str, object]:
         f"0-{RANGE_BYTES - 1}",
         "--limit-rate",
         LIMIT_RATE,
+        "--connect-timeout",
+        str(CONNECT_TIMEOUT_SECONDS),
         "--max-time",
         str(MAX_TIME_SECONDS),
         "--write-out",
@@ -178,6 +182,7 @@ def main() -> int:
         print(f"RANGE_BYTES={RANGE_BYTES}")
         print(f"INTERVAL_SECONDS={INTERVAL_SECONDS}")
         print(f"MAX_TIME_SECONDS={MAX_TIME_SECONDS}")
+        print(f"CONNECT_TIMEOUT_SECONDS={CONNECT_TIMEOUT_SECONDS}")
         print(f"Comando base: curl --limit-rate {shlex.quote(LIMIT_RATE)} --range 0-{RANGE_BYTES - 1}")
         print("Ctrl+C para detener.")
 

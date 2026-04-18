@@ -131,9 +131,10 @@ Optional env vars:
 ```bash
 MONITOR_URL="http://ipv4.download.thinkbroadband.com/5MB.zip" \
 LIMIT_RATE="80K" \
-RANGE_BYTES="1048576" \
-INTERVAL_SECONDS="2" \
-MAX_TIME_SECONDS="60" \
+RANGE_BYTES="32768" \
+INTERVAL_SECONDS="1" \
+MAX_TIME_SECONDS="4" \
+CONNECT_TIMEOUT_SECONDS="2" \
 python scripts/internet_speed_logger.py
 ```
 
