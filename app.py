@@ -734,6 +734,19 @@ def _extract_unique_locations_24h(report_text: str) -> Optional[int]:
     if not report_text:
         return None
 
+    explicit_total_match = re.search(
+        r"^-\s*Unique\s+countries/cities\s*\(24h\):\s*([0-9][0-9,]*)\s*$",
+        report_text,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    if explicit_total_match:
+        try:
+            explicit_total = int(explicit_total_match.group(1).replace(",", ""))
+        except ValueError:
+            explicit_total = None
+        if explicit_total and explicit_total > 0:
+            return explicit_total
+
     lines = [line.strip() for line in report_text.splitlines()]
     in_top_locations = False
     locations = set()

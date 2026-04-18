@@ -63,6 +63,21 @@ def test_extract_unique_source_ips_24h_reads_ufw_report_unique_total():
     assert _extract_unique_source_ips_24h(ufw_report_text) == 2372
 
 
+def test_extract_unique_locations_24h_prefers_explicit_total_line():
+    ufw_report_text = """# UFW Block Report
+
+- Unique countries/cities (24h): 321
+
+## Top source countries/cities
+| # | Location | Count | % |
+| ---: | --- | ---: | ---: |
+| 1 | London, United Kingdom | 145 | 23.4% |
+| 2 | Mae Sot, Thailand | 112 | 18.1% |
+"""
+
+    assert _extract_unique_locations_24h(ufw_report_text) == 321
+
+
 def test_extract_unique_locations_24h_reads_top_locations_section():
     ufw_report_text = """# UFW Block Report
 
