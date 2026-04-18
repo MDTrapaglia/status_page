@@ -532,6 +532,7 @@
       const initialPi = {{ initial_pi | tojson }};
       const initialPiHistory = {{ initial_pi_history | tojson }};
       const initialPiHistoryFull = {{ initial_pi_history_full | tojson }};
+      const initialInternetMonitorHistory = {{ initial_internet_monitor_history | tojson }};
       const initialQuote = {{ initial_quote | tojson }};
       const initialPortBlock = {{ initial_port_block | tojson }};
       const authToken = new URLSearchParams(window.location.search).get("token");
@@ -1214,13 +1215,37 @@
         return points;
       }
 
-      function buildPiSeries(points) {
+      function normalizeInternetHistory(history) {
+        const safe = history || {};
+        const labels = Array.isArray(safe.labels) ? safe.labels : [];
+        const speeds = Array.isArray(safe.speed_kbps) ? safe.speed_kbps : [];
+        const status = Array.isArray(safe.status) ? safe.status : [];
+        const points = [];
+        const length = Math.min(labels.length, speeds.length);
+        for (let i = 0; i < length; i += 1) {
+          const label = labels[i];
+          if (!label) continue;
+          const x = new Date(label);
+          if (Number.isNaN(x.getTime())) continue;
+          const speed = Number(speeds[i]);
+          points.push({
+            x,
+            speed: Number.isFinite(speed) ? speed : null,
+            status: status?.[i] || null,
+          });
+        }
+        return points;
+      }
+
+      function buildPiSeries(points, internetHistory) {
+        const internetPoints = normalizeInternetHistory(internetHistory);
         return {
           labels: points.map((point) => point.x),
           tempData: points.map((point) => ({ x: point.x, y: point.temperature })),
           cpuData: points.map((point) => ({ x: point.x, y: point.cpu })),
           ramData: points.map((point) => ({ x: point.x, y: point.ram })),
           fanData: points.map((point) => ({ x: point.x, y: point.fan })),
+          netData: internetPoints.map((point) => ({ x: point.x, y: point.speed })),
         };
       }
 
@@ -1261,6 +1286,15 @@
             yAxisID: "percent",
             spanGaps: true,
             tension: 0.3,
+          },
+          {
+            label: "Internet (KB/s)",
+            data: series.netData,
+            borderColor: "#facc15",
+            backgroundColor: "rgba(250, 204, 21, 0.2)",
+            yAxisID: "speed",
+            spanGaps: true,
+            tension: 0.25,
           },
         ];
       }
@@ -1413,7 +1447,7 @@
         bitaxeBestChart.update("none");
       }
 
-      function updatePiChart(history) {
+      function updatePiChart(history, internetHistory) {
         if (!piChartCanvas || !piChartWrapper) return;
         const points = normalizeHistory(history);
         if (!points.length) {
@@ -1429,7 +1463,7 @@
         }
 
         piChartWrapper.style.display = "block";
-        const series = buildPiSeries(points);
+        const series = buildPiSeries(points, internetHistory);
         const datasets = createPiDatasets(series);
         const overlay = buildStatusOverlay(points);
         if (piChart) {
@@ -1480,6 +1514,15 @@
                   ticks: { color: "#94a3b8" },
                   grid: { drawOnChartArea: false },
                 },
+                speed: {
+                  type: "linear",
+                  position: "right",
+                  offset: true,
+                  min: 0,
+                  title: { display: true, text: "KB/s", color: "#facc15" },
+                  ticks: { color: "#facc15" },
+                  grid: { drawOnChartArea: false },
+                },
               },
             },
           });
@@ -1498,7 +1541,7 @@
         updateStatusLegend(overlay);
       }
 
-      function updatePiFullChart(history) {
+      function updatePiFullChart(history, internetHistory) {
         if (!piFullChartCanvas || !piFullChartContainer) return;
         const labels = Array.isArray(history?.labels) ? history.labels : [];
         if (!labels.length) {
@@ -1540,7 +1583,7 @@
         }
 
         piFullChartContainer.style.display = "block";
-        const series = buildPiSeries(points);
+        const series = buildPiSeries(points, internetHistory);
         const datasets = createPiDatasets(series);
         const overlay = buildStatusOverlay(points);
         if (piFullChart) {
@@ -1599,6 +1642,15 @@
                   max: 100,
                   title: { display: true, text: "%", color: "#94a3b8" },
                   ticks: { color: "#94a3b8" },
+                  grid: { drawOnChartArea: false },
+                },
+                speed: {
+                  type: "linear",
+                  position: "right",
+                  offset: true,
+                  min: 0,
+                  title: { display: true, text: "KB/s", color: "#facc15" },
+                  ticks: { color: "#facc15" },
                   grid: { drawOnChartArea: false },
                 },
               },
@@ -1669,8 +1721,8 @@
           renderSystem(payload.system);
           updateBitaxeBestChart(payload.bitaxe_best_history);
           renderPi(payload.pi);
-          updatePiChart(payload.pi_history);
-          updatePiFullChart(payload.pi_history_full);
+          updatePiChart(payload.pi_history, payload.internet_monitor_history);
+          updatePiFullChart(payload.pi_history_full, payload.internet_monitor_history);
           renderQuote(payload.quote);
           renderError(payload.error || "");
           updatedAt.textContent = new Date(payload.updated_at).toLocaleTimeString("en-US", {
@@ -1701,8 +1753,8 @@
       renderSystem(initialSystem);
       updateBitaxeBestChart(initialBitaxeBestHistory);
       renderPi(initialPi);
-      updatePiChart(initialPiHistory);
-      updatePiFullChart(initialPiHistoryFull);
+      updatePiChart(initialPiHistory, initialInternetMonitorHistory);
+      updatePiFullChart(initialPiHistoryFull, initialInternetMonitorHistory);
       renderQuote(initialQuote);
       renderPortBlock(initialPortBlock);
       renderError(initialError);

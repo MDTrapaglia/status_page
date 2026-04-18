@@ -9,6 +9,7 @@ def test_status_page_contains_prominent_scanner_highlight_placeholder(monkeypatc
         "pi": None,
         "pi_history": {"labels": []},
         "pi_history_full": {"labels": []},
+        "internet_monitor_history": {"labels": [], "speed_kbps": [], "status": []},
         "quote": None,
         "port_block": {
             "plots": [],

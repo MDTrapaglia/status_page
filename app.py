@@ -37,6 +37,7 @@ PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
 INTERNET_MONITOR_DB_PATH = Path("data/internet_monitor.db")
+INTERNET_MONITOR_HISTORY_MAX_POINTS = 1800
 
 
 def _configure_logging():
@@ -828,6 +829,7 @@ def fetch_dashboard_data(include_port_block: bool = True):
         "pi": pi_stats,
         "pi_history": _build_pi_history_series(),
         "pi_history_full": _build_pi_full_history_series(),
+        "internet_monitor_history": _load_internet_monitor_history(),
         "quote": {"text": quote} if quote else None,
         "port_block": port_block if include_port_block else None,
         "error": "; ".join(errors) if errors else None,
@@ -1663,6 +1665,38 @@ _load_pi_full_history_from_disk()
 _start_pi_sampler()
 
 
+def _load_internet_monitor_history(limit: int = INTERNET_MONITOR_HISTORY_MAX_POINTS) -> Dict[str, List[object]]:
+    db_path = INTERNET_MONITOR_DB_PATH
+    if not db_path.exists():
+        return {"labels": [], "speed_kbps": [], "status": []}
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT timestamp_utc, speed_kbps, status
+                FROM download_samples
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (max(1, min(limit, 5000)),),
+            ).fetchall()
+    except sqlite3.Error as exc:
+        logger.warning("Could not load internet monitor history: %s", exc)
+        return {"labels": [], "speed_kbps": [], "status": []}
+
+    ordered = list(reversed(rows))
+    labels = [str(row["timestamp_utc"]) for row in ordered]
+    speed_kbps = [_safe_float(row["speed_kbps"]) for row in ordered]
+    status = [str(row["status"]) if row["status"] is not None else None for row in ordered]
+    return {
+        "labels": labels,
+        "speed_kbps": speed_kbps,
+        "status": status,
+    }
+
+
 def _load_internet_monitor_payload(limit: int = 120) -> Dict[str, object]:
     db_path = INTERNET_MONITOR_DB_PATH
     if not db_path.exists():
@@ -1810,6 +1844,7 @@ def index():
         initial_pi=dashboard["pi"],
         initial_pi_history=dashboard["pi_history"],
         initial_pi_history_full=dashboard["pi_history_full"],
+        initial_internet_monitor_history=dashboard["internet_monitor_history"],
         initial_quote=dashboard["quote"],
         initial_port_block=dashboard["port_block"],
         initial_error=dashboard["error"],
@@ -1835,6 +1870,7 @@ def prices():
             "pi": dashboard["pi"],
             "pi_history": dashboard["pi_history"],
             "pi_history_full": dashboard["pi_history_full"],
+            "internet_monitor_history": dashboard["internet_monitor_history"],
             "quote": dashboard["quote"],
             "port_block": dashboard["port_block"],
             "error": dashboard["error"],

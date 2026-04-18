@@ -141,3 +141,13 @@ python scripts/internet_speed_logger.py
 
 - `GET /api/internet-monitor?token=...&limit=120`
 - Returns latest sample + recent series ready to chart.
+- `GET /api/prices?token=...` now also includes `internet_monitor_history` used by the Raspberry Pi chart (CPU/RAM/Temp/Fan + Internet KB/s line).
+
+### Service (recommended)
+
+The logger runs as systemd service:
+
+```bash
+sudo systemctl enable --now status-page-internet-monitor.service
+systemctl status --no-pager status-page-internet-monitor.service
+```
