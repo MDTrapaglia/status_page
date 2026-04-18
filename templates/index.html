@@ -519,6 +519,10 @@
           <div class="label">Unique source IPs (24h)</div>
           <div class="value" id="port-block-unique-value"></div>
         </div>
+        <div id="port-block-locations-highlight" class="highlight scanner-secondary-highlight" style="display: none">
+          <div class="label">Unique countries/cities (24h)</div>
+          <div class="value" id="port-block-locations-value"></div>
+        </div>
         <div id="port-block-plots" class="plots-grid"></div>
         <div id="port-block-error" class="error" style="display: none"></div>
       </section>
@@ -574,6 +578,8 @@
       const portBlockScannerValue = document.getElementById("port-block-scanner-value");
       const portBlockUniqueHighlight = document.getElementById("port-block-unique-highlight");
       const portBlockUniqueValue = document.getElementById("port-block-unique-value");
+      const portBlockLocationsHighlight = document.getElementById("port-block-locations-highlight");
+      const portBlockLocationsValue = document.getElementById("port-block-locations-value");
       const portBlockPlots = document.getElementById("port-block-plots");
       const portBlockError = document.getElementById("port-block-error");
       const PORT_BLOCK_REFRESH_MS = 15 * 60 * 1000;
@@ -910,6 +916,17 @@
           portBlockUniqueValue.textContent = "";
         }
 
+        const locationCount24h = Number(portBlock.location_count_24h);
+        if (Number.isFinite(locationCount24h) && locationCount24h > 0) {
+          if (portBlockLocationsHighlight && portBlockLocationsValue) {
+            portBlockLocationsHighlight.style.display = "block";
+            portBlockLocationsValue.textContent = locationCount24h.toLocaleString();
+          }
+        } else if (portBlockLocationsHighlight && portBlockLocationsValue) {
+          portBlockLocationsHighlight.style.display = "none";
+          portBlockLocationsValue.textContent = "";
+        }
+
         const monitoringCount24h = Number(portBlock.monitoring_count_24h);
         if (Number.isFinite(monitoringCount24h) && monitoringCount24h > 0) {
           if (portBlockScannerHighlight && portBlockScannerValue) {
@@ -982,7 +999,10 @@
         }
 
         const hasScannerHighlight = Number.isFinite(monitoringCount24h) && monitoringCount24h > 0;
-        const hasContent = plots.length || errorText || report?.url || hasScannerHighlight;
+        const hasUniqueIpHighlight = Number.isFinite(scannerIpCount) && scannerIpCount > 0;
+        const hasLocationHighlight = Number.isFinite(locationCount24h) && locationCount24h > 0;
+        const hasContent =
+          plots.length || errorText || report?.url || hasScannerHighlight || hasUniqueIpHighlight || hasLocationHighlight;
         portBlockCard.style.display = hasContent ? "block" : "none";
       }
 
@@ -1291,8 +1311,17 @@
 
       function buildPiSeries(points, internetHistory) {
         const internetPoints = normalizeInternetHistory(internetHistory);
-        const internetRange = buildInternetRangeSeries(internetPoints);
-        const internetDayMin = findInternetDayMinimum(internetPoints);
+        const minTs = points.length ? points[0].x.getTime() : null;
+        const maxTs = points.length ? points[points.length - 1].x.getTime() : null;
+        const internetAligned =
+          Number.isFinite(minTs) && Number.isFinite(maxTs)
+            ? internetPoints.filter((point) => {
+                const ts = point.x.getTime();
+                return ts >= minTs && ts <= maxTs;
+              })
+            : internetPoints;
+        const internetRange = buildInternetRangeSeries(internetAligned);
+        const internetDayMin = findInternetDayMinimum(internetAligned);
 
         return {
           labels: points.map((point) => point.x),
@@ -1695,7 +1724,6 @@
               responsive: true,
               maintainAspectRatio: false,
               animation: false,
-              parsing: false,
               interaction: {
                 mode: "nearest",
                 intersect: false,

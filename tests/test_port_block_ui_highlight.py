@@ -31,3 +31,5 @@ def test_status_page_contains_prominent_scanner_highlight_placeholder(monkeypatc
     assert 'id="port-block-scanner-value"' in html
     assert 'id="port-block-unique-highlight"' in html
     assert 'id="port-block-unique-value"' in html
+    assert 'id="port-block-locations-highlight"' in html
+    assert 'id="port-block-locations-value"' in html

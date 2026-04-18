@@ -37,7 +37,7 @@ PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
 INTERNET_MONITOR_DB_PATH = Path("data/internet_monitor.db")
-INTERNET_MONITOR_HISTORY_MAX_POINTS = 1800
+INTERNET_MONITOR_HISTORY_MAX_POINTS = 10000
 
 
 def _configure_logging():
@@ -730,12 +730,50 @@ def _extract_unique_source_ips_24h(report_text: str) -> Optional[int]:
     return unique_source_ips if unique_source_ips > 0 else None
 
 
+def _extract_unique_locations_24h(report_text: str) -> Optional[int]:
+    if not report_text:
+        return None
+
+    lines = [line.strip() for line in report_text.splitlines()]
+    in_top_locations = False
+    locations = set()
+    row_pattern = re.compile(r"^\|\s*\d+\s*\|\s*(.*?)\s*\|\s*[0-9][0-9,]*\s*\|\s*[0-9]+(?:\.[0-9]+)?%\s*\|\s*$")
+
+    for line in lines:
+        lowered = line.lower()
+        if lowered.startswith("## "):
+            in_top_locations = lowered == "## top source countries/cities"
+            continue
+        if not in_top_locations:
+            continue
+        if not line or line.startswith("| ---"):
+            continue
+
+        match = row_pattern.match(line)
+        if not match:
+            continue
+
+        location = match.group(1).strip()
+        if location:
+            locations.add(location)
+
+    return len(locations) if locations else None
+
+
 def _read_unique_source_ips_from_ufw_report() -> Optional[int]:
     try:
         report_text = PORT_BLOCK_UFW_REPORT.read_text(encoding="utf-8")
     except OSError:
         return None
     return _extract_unique_source_ips_24h(report_text)
+
+
+def _read_unique_locations_from_ufw_report() -> Optional[int]:
+    try:
+        report_text = PORT_BLOCK_UFW_REPORT.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return _extract_unique_locations_24h(report_text)
 
 
 def _load_port_block_payload() -> Dict[str, object]:
@@ -774,6 +812,7 @@ def _load_port_block_payload() -> Dict[str, object]:
     scanner_stats = _read_scanner_stats_from_report(report)
     total_blocks_24h = _read_total_blocks_from_ufw_report()
     unique_source_ips_24h = _read_unique_source_ips_from_ufw_report()
+    unique_locations_24h = _read_unique_locations_from_ufw_report()
 
     return {
         "plots": plots,
@@ -781,6 +820,7 @@ def _load_port_block_payload() -> Dict[str, object]:
         "report": report,
         "scanner_ip_count": unique_source_ips_24h or scanner_stats.get("ip_count"),
         "monitoring_count_24h": total_blocks_24h or scanner_stats.get("monitoring_count_24h"),
+        "location_count_24h": unique_locations_24h,
         "error": "; ".join(errors) if errors else None,
     }
 
@@ -1680,7 +1720,7 @@ def _load_internet_monitor_history(limit: int = INTERNET_MONITOR_HISTORY_MAX_POI
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (max(1, min(limit, 5000)),),
+                (max(1, min(limit, 20000)),),
             ).fetchall()
     except sqlite3.Error as exc:
         logger.warning("Could not load internet monitor history: %s", exc)

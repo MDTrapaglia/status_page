@@ -4,6 +4,7 @@ from app import (
     _extract_scanner_ip_count,
     _extract_scanner_monitoring_count,
     _extract_total_blocks_24h,
+    _extract_unique_locations_24h,
     _extract_unique_source_ips_24h,
     _load_port_block_payload,
 )
@@ -62,6 +63,23 @@ def test_extract_unique_source_ips_24h_reads_ufw_report_unique_total():
     assert _extract_unique_source_ips_24h(ufw_report_text) == 2372
 
 
+def test_extract_unique_locations_24h_reads_top_locations_section():
+    ufw_report_text = """# UFW Block Report
+
+## Top source countries/cities
+| # | Location | Count | % |
+| ---: | --- | ---: | ---: |
+| 1 | London, United Kingdom | 145 | 23.4% |
+| 2 | Mae Sot, Thailand | 112 | 18.1% |
+| 3 | London, United Kingdom | 11 | 1.7% |
+
+## Geolocation (max 15 IPs)
+| # | Source IP | Count | % | Location | Network / hint |
+"""
+
+    assert _extract_unique_locations_24h(ufw_report_text) == 2
+
+
 def test_load_port_block_payload_uses_ufw_report_totals_for_monitoring_and_unique_ips(tmp_path, monkeypatch):
     report_old = tmp_path / "port_block_report_2026-04-10.md"
     report_new = tmp_path / "port_block_report_2026-04-11.md"
@@ -79,7 +97,17 @@ def test_load_port_block_payload_uses_ufw_report_totals_for_monitoring_and_uniqu
     plots_dir.mkdir(parents=True)
 
     ufw_report = plots_root / "ufw_report.md"
-    ufw_report.write_text("- Total blocks: 1234\n- Unique source IPs: 999\n", encoding="utf-8")
+    ufw_report.write_text(
+        "- Total blocks: 1234\n"
+        "- Unique source IPs: 999\n"
+        "\n"
+        "## Top source countries/cities\n"
+        "| # | Location | Count | % |\n"
+        "| ---: | --- | ---: | ---: |\n"
+        "| 1 | London, United Kingdom | 145 | 23.4% |\n"
+        "| 2 | Mae Sot, Thailand | 112 | 18.1% |\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr("app.PORT_BLOCK_REPORT_DIR", tmp_path)
     monkeypatch.setattr("app.PORT_BLOCK_ROOT", plots_root)
@@ -90,3 +118,4 @@ def test_load_port_block_payload_uses_ufw_report_totals_for_monitoring_and_uniqu
 
     assert payload["scanner_ip_count"] == 999
     assert payload["monitoring_count_24h"] == 1234
+    assert payload["location_count_24h"] == 2
