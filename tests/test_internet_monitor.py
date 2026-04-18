@@ -108,4 +108,4 @@ def test_status_page_includes_internet_monitor_series(monkeypatch):
 
     assert response.status_code == 200
     assert "initialInternetMonitorHistory" in html
-    assert "Internet (KB/s)" in html
+    assert "Internet rango min-max (5m)" in html

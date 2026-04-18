@@ -1215,6 +1215,8 @@
         return points;
       }
 
+      const INTERNET_RANGE_BUCKET_MINUTES = 5;
+
       function normalizeInternetHistory(history) {
         const safe = history || {};
         const labels = Array.isArray(safe.labels) ? safe.labels : [];
@@ -1237,20 +1239,75 @@
         return points;
       }
 
+      function buildInternetRangeSeries(internetPoints, bucketMinutes = INTERNET_RANGE_BUCKET_MINUTES) {
+        const bucketMs = Math.max(1, bucketMinutes) * 60 * 1000;
+        const buckets = new Map();
+
+        internetPoints.forEach((point) => {
+          if (!Number.isFinite(point.speed)) return;
+          const ts = point.x.getTime();
+          const bucketStart = Math.floor(ts / bucketMs) * bucketMs;
+          const existing = buckets.get(bucketStart) || {
+            bucketStart,
+            min: Number.POSITIVE_INFINITY,
+            max: Number.NEGATIVE_INFINITY,
+          };
+          existing.min = Math.min(existing.min, point.speed);
+          existing.max = Math.max(existing.max, point.speed);
+          buckets.set(bucketStart, existing);
+        });
+
+        const ordered = Array.from(buckets.values()).sort((a, b) => a.bucketStart - b.bucketStart);
+        const minData = ordered.map((bucket) => ({
+          x: new Date(bucket.bucketStart + bucketMs / 2),
+          y: bucket.min,
+        }));
+        const maxData = ordered.map((bucket) => ({
+          x: new Date(bucket.bucketStart + bucketMs / 2),
+          y: bucket.max,
+        }));
+
+        return { minData, maxData };
+      }
+
+      function findInternetDayMinimum(internetPoints) {
+        const valid = internetPoints.filter((point) => Number.isFinite(point.speed));
+        if (!valid.length) return null;
+
+        const latestTs = valid[valid.length - 1].x;
+        const startOfDay = new Date(latestTs);
+        startOfDay.setHours(0, 0, 0, 0);
+        const nextDay = new Date(startOfDay);
+        nextDay.setDate(nextDay.getDate() + 1);
+
+        const sameDay = valid.filter((point) => point.x >= startOfDay && point.x < nextDay);
+        const pool = sameDay.length ? sameDay : valid;
+
+        return pool.reduce((minPoint, point) => {
+          if (!minPoint || point.speed < minPoint.speed) return point;
+          return minPoint;
+        }, null);
+      }
+
       function buildPiSeries(points, internetHistory) {
         const internetPoints = normalizeInternetHistory(internetHistory);
+        const internetRange = buildInternetRangeSeries(internetPoints);
+        const internetDayMin = findInternetDayMinimum(internetPoints);
+
         return {
           labels: points.map((point) => point.x),
           tempData: points.map((point) => ({ x: point.x, y: point.temperature })),
           cpuData: points.map((point) => ({ x: point.x, y: point.cpu })),
           ramData: points.map((point) => ({ x: point.x, y: point.ram })),
           fanData: points.map((point) => ({ x: point.x, y: point.fan })),
-          netData: internetPoints.map((point) => ({ x: point.x, y: point.speed })),
+          netRangeMinData: internetRange.minData,
+          netRangeMaxData: internetRange.maxData,
+          netDayMinData: internetDayMin ? [{ x: internetDayMin.x, y: internetDayMin.speed }] : [],
         };
       }
 
       function createPiDatasets(series) {
-        return [
+        const datasets = [
           {
             label: "Temp (°C)",
             data: series.tempData,
@@ -1287,23 +1344,51 @@
             spanGaps: true,
             tension: 0.3,
           },
-          {
-            label: "Internet (KB/s)",
-            data: series.netData,
+        ];
+
+        if (Array.isArray(series.netRangeMaxData) && series.netRangeMaxData.length) {
+          datasets.push({
+            label: "Internet max (5m)",
+            data: series.netRangeMaxData,
             borderColor: "rgba(250, 204, 21, 0.55)",
-            backgroundColor: "rgba(250, 204, 21, 0.08)",
-            borderWidth: 1.2,
-            pointStyle: "star",
-            pointRadius: 2.5,
-            pointHoverRadius: 6,
-            pointBackgroundColor: "#facc15",
-            pointBorderColor: "#fef9c3",
-            pointBorderWidth: 1,
+            backgroundColor: "rgba(250, 204, 21, 0)",
+            borderWidth: 1.1,
+            pointRadius: 0,
+            pointHoverRadius: 3,
             yAxisID: "speed",
             spanGaps: true,
-            tension: 0.22,
-          },
-        ];
+            tension: 0.2,
+          });
+          datasets.push({
+            label: "Internet rango min-max (5m)",
+            data: series.netRangeMinData,
+            borderColor: "rgba(250, 204, 21, 0.4)",
+            backgroundColor: "rgba(250, 204, 21, 0.18)",
+            borderWidth: 1.0,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            fill: "-1",
+            yAxisID: "speed",
+            spanGaps: true,
+            tension: 0.2,
+          });
+        }
+
+        if (Array.isArray(series.netDayMinData) && series.netDayMinData.length) {
+          datasets.push({
+            label: "Mínimo del día (internet)",
+            data: series.netDayMinData,
+            borderColor: "rgba(250, 204, 21, 0.95)",
+            backgroundColor: "rgba(250, 204, 21, 0.95)",
+            pointStyle: "star",
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            showLine: false,
+            yAxisID: "speed",
+          });
+        }
+
+        return datasets;
       }
 
       function updateBitaxeBestChart(history) {
