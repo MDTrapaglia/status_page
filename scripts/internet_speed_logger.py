@@ -30,7 +30,7 @@ DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "data" / "internet_monitor.db
 MONITOR_URL = os.getenv("MONITOR_URL", "http://ipv4.download.thinkbroadband.com/5MB.zip")
 LIMIT_RATE = os.getenv("LIMIT_RATE", "80K")
 RANGE_BYTES = int(os.getenv("RANGE_BYTES", "1048576"))
-INTERVAL_SECONDS = float(os.getenv("INTERVAL_SECONDS", "15"))
+INTERVAL_SECONDS = float(os.getenv("INTERVAL_SECONDS", "2"))
 MAX_TIME_SECONDS = int(os.getenv("MAX_TIME_SECONDS", "60"))
 
 STOP = False
