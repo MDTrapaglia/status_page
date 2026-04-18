@@ -33,7 +33,9 @@ PORT_BLOCK_UFW_REPORT = PORT_BLOCK_ROOT / "ufw_report.md"
 PORT_BLOCK_REPORT_DIR = Path(__file__).resolve().parent
 PORT_BLOCK_REPORT_GLOB = "port_block_report_*.md"
 PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
-PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
+PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips", "ufw_geo_map_all_sources"}
+PORT_BLOCK_GEO_MAP_FILENAME = "ufw_plots/ufw_geo_map.jpg"
+PORT_BLOCK_GEO_MAP_ALL_SOURCES_FILENAME = "ufw_plots/ufw_geo_map_all_sources.jpg"
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
 INTERNET_MONITOR_DB_PATH = Path("data/internet_monitor.db")
@@ -826,6 +828,13 @@ def _load_port_block_payload() -> Dict[str, object]:
     total_blocks_24h = _read_total_blocks_from_ufw_report()
     unique_source_ips_24h = _read_unique_source_ips_from_ufw_report()
     unique_locations_24h = _read_unique_locations_from_ufw_report()
+    geo_map_all_sources_path = (PORT_BLOCK_ROOT / PORT_BLOCK_GEO_MAP_ALL_SOURCES_FILENAME).resolve()
+    port_block_root = PORT_BLOCK_ROOT.resolve()
+    geo_map_all_sources_available = (
+        (port_block_root in geo_map_all_sources_path.parents or geo_map_all_sources_path == port_block_root)
+        and geo_map_all_sources_path.exists()
+        and geo_map_all_sources_path.is_file()
+    )
 
     return {
         "plots": plots,
@@ -834,6 +843,7 @@ def _load_port_block_payload() -> Dict[str, object]:
         "scanner_ip_count": unique_source_ips_24h or scanner_stats.get("ip_count"),
         "monitoring_count_24h": total_blocks_24h or scanner_stats.get("monitoring_count_24h"),
         "location_count_24h": unique_locations_24h,
+        "geo_map_all_sources_available": geo_map_all_sources_available,
         "error": "; ".join(errors) if errors else None,
     }
 
@@ -1807,6 +1817,22 @@ def _load_internet_monitor_payload(limit: int = 120) -> Dict[str, object]:
     }
 
 
+def _resolve_port_block_asset_target(root: Path, filename: str, *, all_sources: bool = False) -> Path:
+    cleaned_filename = str(filename).lstrip("/")
+    target = (root / cleaned_filename).resolve()
+    if not all_sources:
+        return target
+
+    normalized = cleaned_filename.replace("\\", "/")
+    if normalized != PORT_BLOCK_GEO_MAP_FILENAME:
+        return target
+
+    all_sources_target = (root / PORT_BLOCK_GEO_MAP_ALL_SOURCES_FILENAME).resolve()
+    if all_sources_target.exists() and all_sources_target.is_file():
+        return all_sources_target
+    return target
+
+
 @app.before_request
 def _require_token():
     if request.endpoint == "static":
@@ -1830,7 +1856,8 @@ def _require_token():
 
 @app.route("/port-block/<path:filename>")
 def port_block_asset(filename):
-    target = (PORT_BLOCK_ROOT / filename).resolve()
+    all_sources = request.args.get("all_sources", "").strip().lower() in {"1", "true", "yes", "on"}
+    target = _resolve_port_block_asset_target(PORT_BLOCK_ROOT, filename, all_sources=all_sources)
     root = PORT_BLOCK_ROOT.resolve()
     if root not in target.parents and target != root:
         abort(404)

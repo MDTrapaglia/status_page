@@ -348,6 +348,29 @@
         color: #94a3b8;
       }
 
+      .port-block-geo-map-controls {
+        margin-top: 0.75rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.55rem 0.75rem;
+        border-radius: 0.6rem;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.45);
+        color: #cbd5f5;
+        font-size: 0.9rem;
+      }
+
+      .port-block-geo-map-controls input[type="checkbox"] {
+        width: 1rem;
+        height: 1rem;
+        accent-color: #5fb0ff;
+      }
+
+      .port-block-geo-map-controls.disabled {
+        opacity: 0.7;
+      }
+
       .scanner-highlight {
         margin-top: 1rem;
         background: linear-gradient(120deg, rgba(251, 146, 60, 0.35), rgba(15, 23, 42, 0.65));
@@ -510,6 +533,12 @@
           <h2>UFW blocks</h2>
           <div id="port-block-subtitle" class="meta"></div>
           <div id="port-block-report" class="meta" style="display: none"></div>
+          <div id="ufw-geo-map-controls" class="port-block-geo-map-controls" style="display: none">
+            <input type="checkbox" id="ufw-geo-map-all-sources-toggle" />
+            <label id="ufw-geo-map-all-sources-label" for="ufw-geo-map-all-sources-toggle">
+              Show all sources in Ufw Geo Map
+            </label>
+          </div>
         </div>
         <div id="port-block-scanner-highlight" class="highlight scanner-highlight" style="display: none">
           <div class="label">24Hs monitoring count</div>
@@ -574,6 +603,9 @@
       const portBlockCard = document.getElementById("port-block-card");
       const portBlockSubtitle = document.getElementById("port-block-subtitle");
       const portBlockReport = document.getElementById("port-block-report");
+      const portBlockGeoMapControls = document.getElementById("ufw-geo-map-controls");
+      const portBlockGeoMapAllSourcesToggle = document.getElementById("ufw-geo-map-all-sources-toggle");
+      const portBlockGeoMapAllSourcesLabel = document.getElementById("ufw-geo-map-all-sources-label");
       const portBlockScannerHighlight = document.getElementById("port-block-scanner-highlight");
       const portBlockScannerValue = document.getElementById("port-block-scanner-value");
       const portBlockUniqueHighlight = document.getElementById("port-block-unique-highlight");
@@ -586,6 +618,8 @@
       let piChart = null;
       let piFullChart = null;
       let bitaxeBestChart = null;
+      let latestPortBlockPayload = initialPortBlock || null;
+      let portBlockShowAllSources = false;
       const revealedKeys = new Set();
 
       const STATUS_COLORS = {
@@ -837,6 +871,20 @@
         return `${url}${separator}${params.join("&")}`;
       }
 
+      function isUfwGeoMapPlot(plot) {
+        const filename = String(plot?.filename || "").replace(/\\/g, "/");
+        return filename.endsWith("ufw_plots/ufw_geo_map.jpg") || filename.endsWith("ufw_geo_map.jpg");
+      }
+
+      function buildPortBlockPlotUrl(plot, version) {
+        let url = String(plot?.url || "");
+        if (portBlockShowAllSources && isUfwGeoMapPlot(plot)) {
+          const separator = url.includes("?") ? "&" : "?";
+          url = `${url}${separator}all_sources=1`;
+        }
+        return cacheBustedUrl(url, version);
+      }
+
       function renderSparkline(points) {
         if (!Array.isArray(points) || !points.length) return "—";
 
@@ -893,8 +941,12 @@
       }
 
       function renderPortBlock(portBlock) {
+        latestPortBlockPayload = portBlock || null;
         if (!portBlock) {
           portBlockCard.style.display = "none";
+          if (portBlockGeoMapControls) {
+            portBlockGeoMapControls.style.display = "none";
+          }
           return;
         }
 
@@ -956,6 +1008,27 @@
         }
 
         const plots = Array.isArray(portBlock.plots) ? portBlock.plots : [];
+        const hasGeoMapPlot = plots.some((plot) => isUfwGeoMapPlot(plot));
+        const hasAllSourcesGeoMap = !!portBlock.geo_map_all_sources_available;
+        if (!hasAllSourcesGeoMap) {
+          portBlockShowAllSources = false;
+        }
+        if (portBlockGeoMapControls && portBlockGeoMapAllSourcesToggle && portBlockGeoMapAllSourcesLabel) {
+          if (hasGeoMapPlot) {
+            portBlockGeoMapControls.style.display = "inline-flex";
+            portBlockGeoMapControls.classList.toggle("disabled", !hasAllSourcesGeoMap);
+            portBlockGeoMapAllSourcesToggle.disabled = !hasAllSourcesGeoMap;
+            portBlockGeoMapAllSourcesToggle.checked = hasAllSourcesGeoMap && portBlockShowAllSources;
+            if (hasAllSourcesGeoMap) {
+              portBlockGeoMapAllSourcesLabel.textContent = "Show all sources in Ufw Geo Map";
+            } else {
+              portBlockGeoMapAllSourcesLabel.textContent = "Show all sources in Ufw Geo Map (not available yet)";
+            }
+          } else {
+            portBlockGeoMapControls.style.display = "none";
+          }
+        }
+
         portBlockPlots.innerHTML = "";
         if (plots.length) {
           portBlockPlots.style.display = "grid";
@@ -969,7 +1042,7 @@
             title.textContent = plot.label || plot.filename || "Plot";
             const img = document.createElement("img");
             const version = plot.updated_at || portBlock.updated_at || "";
-            img.src = cacheBustedUrl(plot.url, version);
+            img.src = buildPortBlockPlotUrl(plot, version);
             img.alt = plot.label || plot.filename || "Plot";
             const meta = document.createElement("div");
             meta.className = "plot-meta";
@@ -1867,6 +1940,13 @@
             portBlockError.textContent = err.message;
           }
         }
+      }
+
+      if (portBlockGeoMapAllSourcesToggle) {
+        portBlockGeoMapAllSourcesToggle.addEventListener("change", () => {
+          portBlockShowAllSources = !!portBlockGeoMapAllSourcesToggle.checked;
+          renderPortBlock(latestPortBlockPayload);
+        });
       }
 
       renderRows(initialData || []);
