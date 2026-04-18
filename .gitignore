@@ -5,3 +5,4 @@ pi_history_full.jsonl
 bitaxe_best_history.jsonl
 *.log
 acim_quotes.json
+data/internet_monitor.db

@@ -4,6 +4,7 @@ import logging
 import re
 import random
 import socket
+import sqlite3
 import subprocess
 import threading
 import time
@@ -35,6 +36,7 @@ PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
 PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips"}
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
+INTERNET_MONITOR_DB_PATH = Path("data/internet_monitor.db")
 
 
 def _configure_logging():
@@ -1661,6 +1663,63 @@ _load_pi_full_history_from_disk()
 _start_pi_sampler()
 
 
+def _load_internet_monitor_payload(limit: int = 120) -> Dict[str, object]:
+    db_path = INTERNET_MONITOR_DB_PATH
+    if not db_path.exists():
+        return {
+            "available": False,
+            "db_path": str(db_path),
+            "latest": None,
+            "samples": [],
+            "error": "Internet monitor database not found",
+        }
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            latest_row = conn.execute(
+                """
+                SELECT timestamp_utc, url, limit_rate, range_bytes,
+                       speed_bps, speed_kbps, time_total_s, http_code,
+                       status, error, curl_exit_code
+                FROM download_samples
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+
+            rows = conn.execute(
+                """
+                SELECT timestamp_utc, speed_kbps, time_total_s, http_code,
+                       status, curl_exit_code
+                FROM download_samples
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (max(1, min(limit, 1000)),),
+            ).fetchall()
+    except sqlite3.Error as exc:
+        return {
+            "available": False,
+            "db_path": str(db_path),
+            "latest": None,
+            "samples": [],
+            "error": f"Could not read internet monitor DB: {exc}",
+        }
+
+    samples = [dict(row) for row in reversed(rows)]
+    latest = dict(latest_row) if latest_row else None
+
+    return {
+        "available": True,
+        "db_path": str(db_path),
+        "latest": latest,
+        "samples": samples,
+        "error": None,
+    }
+
+
 @app.before_request
 def _require_token():
     if request.endpoint == "static":
@@ -1797,6 +1856,28 @@ def api_port_block():
         jsonify(
             {
                 "port_block": payload,
+                "error": payload.get("error"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        status_code,
+    )
+
+
+@app.route("/api/internet-monitor")
+def api_internet_monitor():
+    limit = request.args.get("limit", default=120, type=int)
+    payload = _load_internet_monitor_payload(limit=limit)
+    status_code = 200 if not payload.get("error") else 207
+    logger.info(
+        "Request to /api/internet-monitor from %s (errors=%s)",
+        request.remote_addr or "unknown",
+        bool(payload.get("error")),
+    )
+    return (
+        jsonify(
+            {
+                "internet_monitor": payload,
                 "error": payload.get("error"),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }

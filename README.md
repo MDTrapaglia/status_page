@@ -26,6 +26,7 @@ This project provides a clean and simple dashboard to monitor multiple URLs or s
 * **Lightweight Architecture:** Designed for high efficiency with minimal resource consumption.
 * **Resource Performance History:** Tracks and stores historical consumption of system resources (CPU, Memory, I/O) to identify and troubleshoot performance bottlenecks.
 * **Bitaxe best-session history:** Persists the miner’s best session difficulty (90‑day retention) and shows it on a log-scale mini chart that only updates when the best diff improves.
+* **Internet Stability Monitor (SQLite):** Runs low-speed controlled download probes continuously and stores each sample (speed, HTTP code, duration, errors) in SQLite for incident evidence and dashboard APIs.
 
 ## 📚 Documentation
 
@@ -98,3 +99,45 @@ The app stores lightweight history files alongside the codebase:
 - `session_state.json`: cumulative AxeOS session time tracker.
 
 All of these are ignored by git and refresh automatically during runtime.
+
+## 🌐 Internet stability monitor (SQLite)
+
+This repository now includes `scripts/internet_speed_logger.py`, a continuous low-speed download probe designed to detect ISP instability (drops, intermittent failures, abnormal latency) with durable evidence in SQLite.
+
+### What it records
+
+Each probe is persisted in `data/internet_monitor.db` table `download_samples` with:
+
+- `timestamp_utc`
+- `url`
+- `limit_rate`
+- `range_bytes`
+- `speed_bps` / `speed_kbps`
+- `time_total_s`
+- `http_code`
+- `status` (`ok` / `error`)
+- `error`
+- `curl_exit_code`
+
+### Run manually
+
+```bash
+cd /home/mtrapaglia/projects/status_page
+python scripts/internet_speed_logger.py
+```
+
+Optional env vars:
+
+```bash
+MONITOR_URL="http://ipv4.download.thinkbroadband.com/5MB.zip" \
+LIMIT_RATE="80K" \
+RANGE_BYTES="1048576" \
+INTERVAL_SECONDS="15" \
+MAX_TIME_SECONDS="60" \
+python scripts/internet_speed_logger.py
+```
+
+### API for visualization
+
+- `GET /api/internet-monitor?token=...&limit=120`
+- Returns latest sample + recent series ready to chart.
