@@ -202,6 +202,11 @@
         border-color: rgba(148, 163, 184, 0.8);
       }
 
+      .legend-swatch.low-speed {
+        background: rgba(239, 68, 68, 0.45);
+        border-color: rgba(239, 68, 68, 0.95);
+      }
+
       .metrics-group {
         margin-top: 1.25rem;
         padding: 1rem;
@@ -519,6 +524,10 @@
             <span class="legend-swatch power"></span>
             <span>No power / script stopped</span>
           </div>
+          <div class="legend-item" id="legend-low-speed">
+            <span class="legend-swatch low-speed"></span>
+            <span>Download &lt; 10 KB/s</span>
+          </div>
         </div>
         <div class="metrics-group" id="pi-metrics"></div>
       </section>
@@ -600,6 +609,7 @@
       const piStatusLegend = document.getElementById("pi-status-legend");
       const legendOffline = document.getElementById("legend-offline");
       const legendPower = document.getElementById("legend-power");
+      const legendLowSpeed = document.getElementById("legend-low-speed");
       const portBlockCard = document.getElementById("port-block-card");
       const portBlockSubtitle = document.getElementById("port-block-subtitle");
       const portBlockReport = document.getElementById("port-block-report");
@@ -627,7 +637,12 @@
         offlineBorder: "rgba(248, 113, 113, 0.92)",
         offlineText: "#fecdd3",
         power: "rgba(148, 163, 184, 0.18)",
+        lowSpeed: "rgba(239, 68, 68, 0.34)",
+        lowSpeedBorder: "rgba(239, 68, 68, 0.98)",
+        lowSpeedText: "#ffe4e6",
       };
+
+      const INTERNET_LOW_SPEED_THRESHOLD_KBPS = 10;
 
       const formatter = new Intl.NumberFormat("en-US", {
         style: "currency",
@@ -723,6 +738,9 @@
         const offlineFill = emphasis ? "rgba(248, 113, 113, 0.6)" : STATUS_COLORS.offline;
         const offlineBorder = emphasis ? "rgba(248, 113, 113, 0.95)" : STATUS_COLORS.offlineBorder;
         const offlineText = emphasis ? "#ffe4e6" : STATUS_COLORS.offlineText;
+        const lowSpeedFill = emphasis ? "rgba(239, 68, 68, 0.52)" : STATUS_COLORS.lowSpeed;
+        const lowSpeedBorder = STATUS_COLORS.lowSpeedBorder;
+        const lowSpeedText = STATUS_COLORS.lowSpeedText;
         ctx.save();
 
         const drawSpan = (span, color, options = {}) => {
@@ -764,6 +782,14 @@
             label: "OFFLINE",
             labelColor: offlineText,
             labelMinWidth: 56,
+          })
+        );
+        (overlay.lowSpeedSpans || []).forEach((span) =>
+          drawSpan(span, lowSpeedFill, {
+            outlineColor: lowSpeedBorder,
+            label: "<10 KB/s",
+            labelColor: lowSpeedText,
+            labelMinWidth: 62,
           })
         );
         ctx.restore();
@@ -829,14 +855,41 @@
         return spans;
       }
 
-      function buildStatusOverlay(points) {
+      function buildLowSpeedSpans(internetPoints, thresholdKbps = INTERNET_LOW_SPEED_THRESHOLD_KBPS) {
+        if (!Array.isArray(internetPoints) || !internetPoints.length) return [];
+        const spans = [];
+        const expectedMs = computeExpectedIntervalMs(internetPoints);
+        let currentStart = null;
+
+        for (let i = 0; i < internetPoints.length; i += 1) {
+          const point = internetPoints[i];
+          const speed = Number(point?.speed);
+          const isLow = Number.isFinite(speed) && speed < thresholdKbps;
+          if (isLow && !currentStart) {
+            currentStart = point.x;
+          }
+          if ((!isLow || i === internetPoints.length - 1) && currentStart) {
+            const end =
+              isLow && i === internetPoints.length - 1
+                ? new Date(internetPoints[i].x.getTime() + expectedMs)
+                : point.x;
+            spans.push({ start: currentStart, end });
+            currentStart = null;
+          }
+        }
+
+        return spans;
+      }
+
+      function buildStatusOverlay(points, internetPoints = []) {
         if (!Array.isArray(points) || !points.length) {
-          return { offlineSpans: [], powerSpans: [] };
+          return { offlineSpans: [], powerSpans: [], lowSpeedSpans: [] };
         }
         const expectedMs = computeExpectedIntervalMs(points);
         return {
           offlineSpans: buildOfflineSpans(points, expectedMs),
           powerSpans: buildPowerSpans(points, expectedMs),
+          lowSpeedSpans: buildLowSpeedSpans(internetPoints),
         };
       }
 
@@ -849,13 +902,17 @@
         if (!piStatusLegend) return;
         const hasOffline = overlay?.offlineSpans?.length;
         const hasPower = overlay?.powerSpans?.length;
-        if (hasOffline || hasPower) {
+        const hasLowSpeed = overlay?.lowSpeedSpans?.length;
+        if (hasOffline || hasPower || hasLowSpeed) {
           piStatusLegend.style.display = "flex";
           if (legendOffline) {
             legendOffline.style.opacity = hasOffline ? "1" : "0.55";
           }
           if (legendPower) {
             legendPower.style.opacity = hasPower ? "1" : "0.55";
+          }
+          if (legendLowSpeed) {
+            legendLowSpeed.style.opacity = hasLowSpeed ? "1" : "0.55";
           }
         } else {
           piStatusLegend.style.display = "none";
@@ -1405,6 +1462,7 @@
           netRangeMinData: internetRange.minData,
           netRangeMaxData: internetRange.maxData,
           netDayMinData: internetDayMin ? [{ x: internetDayMin.x, y: internetDayMin.speed }] : [],
+          internetPoints: internetAligned,
         };
       }
 
@@ -1450,25 +1508,25 @@
 
         if (Array.isArray(series.netRangeMaxData) && series.netRangeMaxData.length) {
           datasets.push({
-            label: "Internet max (5m)",
+            label: "Internet descarga max (5m)",
             data: series.netRangeMaxData,
-            borderColor: "rgba(250, 204, 21, 0.55)",
+            borderColor: "rgba(250, 204, 21, 0.95)",
             backgroundColor: "rgba(250, 204, 21, 0)",
-            borderWidth: 1.1,
+            borderWidth: 2,
             pointRadius: 0,
-            pointHoverRadius: 3,
+            pointHoverRadius: 4,
             yAxisID: "speed",
             spanGaps: true,
             tension: 0.2,
           });
           datasets.push({
-            label: "Internet rango min-max (5m)",
+            label: "Internet descarga rango min-max (5m)",
             data: series.netRangeMinData,
-            borderColor: "rgba(250, 204, 21, 0.4)",
-            backgroundColor: "rgba(250, 204, 21, 0.18)",
-            borderWidth: 1.0,
+            borderColor: "rgba(250, 204, 21, 0.65)",
+            backgroundColor: "rgba(250, 204, 21, 0.3)",
+            borderWidth: 1.4,
             pointRadius: 0,
-            pointHoverRadius: 3,
+            pointHoverRadius: 4,
             fill: "-1",
             yAxisID: "speed",
             spanGaps: true,
@@ -1649,19 +1707,19 @@
           if (piChart) {
             piChart.data.labels = [];
             piChart.data.datasets.forEach((dataset) => (dataset.data = []));
-            applyStatusOverlay(piChart, { offlineSpans: [], powerSpans: [] });
+            applyStatusOverlay(piChart, { offlineSpans: [], powerSpans: [], lowSpeedSpans: [] });
             piChart.update("none");
           }
-          updateStatusLegend({ offlineSpans: [], powerSpans: [] });
+          updateStatusLegend({ offlineSpans: [], powerSpans: [], lowSpeedSpans: [] });
           return;
         }
 
         piChartWrapper.style.display = "block";
         const series = buildPiSeries(points, internetHistory);
         const datasets = createPiDatasets(series);
-        const overlay = buildStatusOverlay(points);
+        const overlay = buildStatusOverlay(points, series.internetPoints);
         if (piChart) {
-          piChart.$statusOverlayOnTop = false;
+          piChart.$statusOverlayOnTop = true;
           piChart.$statusOverlayEmphasis = false;
         }
 
@@ -1720,7 +1778,7 @@
               },
             },
           });
-          piChart.$statusOverlayOnTop = false;
+          piChart.$statusOverlayOnTop = true;
           piChart.$statusOverlayEmphasis = false;
           applyStatusOverlay(piChart, overlay);
           piChart.update("none");
@@ -1743,7 +1801,7 @@
           if (piFullChart) {
             piFullChart.data.labels = [];
             piFullChart.data.datasets.forEach((dataset) => (dataset.data = []));
-            applyStatusOverlay(piFullChart, { offlineSpans: [], powerSpans: [] });
+            applyStatusOverlay(piFullChart, { offlineSpans: [], powerSpans: [], lowSpeedSpans: [] });
             piFullChart.update("none");
           }
           return;
@@ -1779,7 +1837,7 @@
         piFullChartContainer.style.display = "block";
         const series = buildPiSeries(points, internetHistory);
         const datasets = createPiDatasets(series);
-        const overlay = buildStatusOverlay(points);
+        const overlay = buildStatusOverlay(points, series.internetPoints);
         if (piFullChart) {
           piFullChart.$statusOverlayOnTop = true;
           piFullChart.$statusOverlayEmphasis = true;
