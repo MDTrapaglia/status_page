@@ -129,7 +129,7 @@ PI_FAN_PWM_GLOBS = [
     "/sys/class/hwmon/hwmon*/pwm1",
 ]
 MAX_FAN_RPM = 6000.0
-PI_HISTORY_WINDOW = timedelta(hours=4)
+PI_HISTORY_WINDOW = timedelta(hours=12)
 PI_HISTORY: Deque[Dict[str, object]] = deque()
 PI_HISTORY_LOCK = threading.Lock()
 PI_SAMPLE_INTERVAL_SECONDS = 60
