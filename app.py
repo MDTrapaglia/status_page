@@ -39,7 +39,7 @@ PORT_BLOCK_GEO_MAP_ALL_SOURCES_FILENAME = "ufw_plots/ufw_geo_map_all_sources.jpg
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
 INTERNET_MONITOR_DB_PATH = Path("data/internet_monitor.db")
-INTERNET_MONITOR_HISTORY_MAX_POINTS = 10000
+INTERNET_MONITOR_HISTORY_MAX_POINTS = 50000
 
 
 def _configure_logging():
@@ -1733,6 +1733,9 @@ def _load_internet_monitor_history(limit: int = INTERNET_MONITOR_HISTORY_MAX_POI
     if not db_path.exists():
         return {"labels": [], "speed_kbps": [], "status": []}
 
+    cutoff_utc = datetime.now(timezone.utc) - PI_HISTORY_WINDOW
+    cutoff_iso = cutoff_utc.isoformat()
+
     try:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -1740,10 +1743,11 @@ def _load_internet_monitor_history(limit: int = INTERNET_MONITOR_HISTORY_MAX_POI
                 """
                 SELECT timestamp_utc, speed_kbps, status
                 FROM download_samples
+                WHERE timestamp_utc >= ?
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (max(1, min(limit, 20000)),),
+                (cutoff_iso, max(1, min(limit, 100000))),
             ).fetchall()
     except sqlite3.Error as exc:
         logger.warning("Could not load internet monitor history: %s", exc)

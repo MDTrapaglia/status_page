@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import timedelta
 from pathlib import Path
 
 from app import AUTH_TOKEN, app
@@ -70,6 +71,7 @@ def test_load_internet_monitor_history_from_sqlite(tmp_path, monkeypatch):
     _seed_monitor_db(db_path)
 
     monkeypatch.setattr("app.INTERNET_MONITOR_DB_PATH", db_path)
+    monkeypatch.setattr("app.PI_HISTORY_WINDOW", timedelta(days=3650))
 
     from app import _load_internet_monitor_history
 
