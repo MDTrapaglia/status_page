@@ -33,9 +33,10 @@ PORT_BLOCK_UFW_REPORT = PORT_BLOCK_ROOT / "ufw_report.md"
 PORT_BLOCK_REPORT_DIR = Path(__file__).resolve().parent
 PORT_BLOCK_REPORT_GLOB = "port_block_report_*.md"
 PORT_BLOCK_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
-PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips", "ufw_geo_map_all_sources"}
+PORT_BLOCK_EXCLUDED_PLOTS = {"ufw_top_ips", "ufw_geo_map_all_sources", "ufw_geo_map_all_sources_no_labels"}
 PORT_BLOCK_GEO_MAP_FILENAME = "ufw_plots/ufw_geo_map.jpg"
 PORT_BLOCK_GEO_MAP_ALL_SOURCES_FILENAME = "ufw_plots/ufw_geo_map_all_sources.jpg"
+PORT_BLOCK_GEO_MAP_ALL_SOURCES_NO_LABELS_FILENAME = "ufw_plots/ufw_geo_map_all_sources_no_labels.jpg"
 CONNECTIVITY_TEST_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 CONNECTIVITY_TEST_TIMEOUT = 2.0
 INTERNET_MONITOR_DB_PATH = Path("data/internet_monitor.db")
@@ -1821,7 +1822,13 @@ def _load_internet_monitor_payload(limit: int = 120) -> Dict[str, object]:
     }
 
 
-def _resolve_port_block_asset_target(root: Path, filename: str, *, all_sources: bool = False) -> Path:
+def _resolve_port_block_asset_target(
+    root: Path,
+    filename: str,
+    *,
+    all_sources: bool = False,
+    hide_labels: bool = False,
+) -> Path:
     cleaned_filename = str(filename).lstrip("/")
     target = (root / cleaned_filename).resolve()
     if not all_sources:
@@ -1830,6 +1837,11 @@ def _resolve_port_block_asset_target(root: Path, filename: str, *, all_sources: 
     normalized = cleaned_filename.replace("\\", "/")
     if normalized != PORT_BLOCK_GEO_MAP_FILENAME:
         return target
+
+    if hide_labels:
+        no_labels_target = (root / PORT_BLOCK_GEO_MAP_ALL_SOURCES_NO_LABELS_FILENAME).resolve()
+        if no_labels_target.exists() and no_labels_target.is_file():
+            return no_labels_target
 
     all_sources_target = (root / PORT_BLOCK_GEO_MAP_ALL_SOURCES_FILENAME).resolve()
     if all_sources_target.exists() and all_sources_target.is_file():
@@ -1861,7 +1873,13 @@ def _require_token():
 @app.route("/port-block/<path:filename>")
 def port_block_asset(filename):
     all_sources = request.args.get("all_sources", "").strip().lower() in {"1", "true", "yes", "on"}
-    target = _resolve_port_block_asset_target(PORT_BLOCK_ROOT, filename, all_sources=all_sources)
+    hide_labels = request.args.get("hide_labels", "").strip().lower() in {"1", "true", "yes", "on"}
+    target = _resolve_port_block_asset_target(
+        PORT_BLOCK_ROOT,
+        filename,
+        all_sources=all_sources,
+        hide_labels=hide_labels,
+    )
     root = PORT_BLOCK_ROOT.resolve()
     if root not in target.parents and target != root:
         abort(404)

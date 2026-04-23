@@ -937,7 +937,7 @@
         let url = String(plot?.url || "");
         if (portBlockShowAllSources && isUfwGeoMapPlot(plot)) {
           const separator = url.includes("?") ? "&" : "?";
-          url = `${url}${separator}all_sources=1`;
+          url = `${url}${separator}all_sources=1&hide_labels=1`;
         }
         return cacheBustedUrl(url, version);
       }
@@ -1077,7 +1077,7 @@
             portBlockGeoMapAllSourcesToggle.disabled = !hasAllSourcesGeoMap;
             portBlockGeoMapAllSourcesToggle.checked = hasAllSourcesGeoMap && portBlockShowAllSources;
             if (hasAllSourcesGeoMap) {
-              portBlockGeoMapAllSourcesLabel.textContent = "Show all sources in Ufw Geo Map";
+              portBlockGeoMapAllSourcesLabel.textContent = "Show all sources in Ufw Geo Map (hide location labels)";
             } else {
               portBlockGeoMapAllSourcesLabel.textContent = "Show all sources in Ufw Geo Map (not available yet)";
             }
