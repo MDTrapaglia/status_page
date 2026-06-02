@@ -141,6 +141,7 @@ PI_FULL_HISTORY_MAX_API_POINTS = 2000
 PI_FULL_HISTORY: List[Dict[str, object]] = []
 SESSION_STATE_PATH = Path("session_state.json")
 QUOTES_PATH = Path("acim_quotes.json")
+QUOTE_FAVORITES_PATH = Path("acim_quote_favorites.json")
 QUOTES_MAX_AGE = timedelta(days=7)
 QUOTES_REFRESH_INTERVAL = timedelta(days=1)
 QUOTE_REQUEST_TIMEOUT = 6
@@ -149,8 +150,10 @@ QUOTE_MAX_CHARS = 2400
 QUOTE_TARGET_CHARS = 840
 QUOTE_CRAWL_LINK_LIMIT = 60
 QUOTE_CACHE: List[str] = []
+QUOTE_FAVORITES_CACHE: List[str] = []
 QUOTE_LAST_FETCH: Optional[datetime] = None
 QUOTE_LOCK = threading.Lock()
+QUOTE_FAVORITES_LOCK = threading.Lock()
 QUOTE_SOURCES = [
     {
         "url": "https://acourseinmiraclesnow.com/read-acim-online/",
@@ -228,6 +231,84 @@ def _save_cached_quotes(quotes: List[str]) -> None:
             json.dump(quotes, handle, ensure_ascii=False, indent=2)
     except OSError as exc:
         logger.warning("Could not save quotes to disk: %s", exc)
+
+
+def _normalize_quote_text(value: object) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def _load_quote_favorites() -> List[str]:
+    if not QUOTE_FAVORITES_PATH.exists():
+        return []
+    try:
+        with QUOTE_FAVORITES_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+            if isinstance(data, list):
+                favorites: List[str] = []
+                seen = set()
+                for item in data:
+                    text = _normalize_quote_text(item)
+                    if not text or text in seen:
+                        continue
+                    seen.add(text)
+                    favorites.append(text)
+                return favorites
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        logger.warning("Could not read quote favorites: %s", exc)
+    return []
+
+
+def _save_quote_favorites(quotes: List[str]) -> None:
+    try:
+        with QUOTE_FAVORITES_PATH.open("w", encoding="utf-8") as handle:
+            json.dump(quotes, handle, ensure_ascii=False, indent=2)
+    except OSError as exc:
+        logger.warning("Could not save quote favorites to disk: %s", exc)
+
+
+def _get_quote_favorites() -> List[str]:
+    global QUOTE_FAVORITES_CACHE
+
+    with QUOTE_FAVORITES_LOCK:
+        if not QUOTE_FAVORITES_CACHE and QUOTE_FAVORITES_PATH.exists():
+            QUOTE_FAVORITES_CACHE = _load_quote_favorites()
+        elif not QUOTE_FAVORITES_PATH.exists():
+            QUOTE_FAVORITES_CACHE = []
+        return list(QUOTE_FAVORITES_CACHE)
+
+
+def _set_quote_favorite(quote: object, favorite: bool) -> List[str]:
+    global QUOTE_FAVORITES_CACHE
+
+    normalized_quote = _normalize_quote_text(quote)
+    if not normalized_quote:
+        return _get_quote_favorites()
+
+    with QUOTE_FAVORITES_LOCK:
+        favorites = QUOTE_FAVORITES_CACHE or _load_quote_favorites()
+        favorites = [item for item in favorites if item]
+        if favorite:
+            if normalized_quote not in favorites:
+                favorites.append(normalized_quote)
+        else:
+            favorites = [item for item in favorites if item != normalized_quote]
+        QUOTE_FAVORITES_CACHE = favorites
+        _save_quote_favorites(favorites)
+        return list(QUOTE_FAVORITES_CACHE)
+
+
+def _build_quote_payload(quote: Optional[str]) -> Optional[Dict[str, object]]:
+    normalized_quote = _normalize_quote_text(quote)
+    if not normalized_quote:
+        return None
+
+    favorites = _get_quote_favorites()
+    return {
+        "text": normalized_quote,
+        "is_favorite": normalized_quote in favorites,
+        "favorites": favorites,
+        "favorites_count": len(favorites),
+    }
 
 
 def _extract_candidates_from_html(html: str, selector: str) -> List[str]:
@@ -895,7 +976,7 @@ def fetch_dashboard_data(include_port_block: bool = True):
         "pi_history": _build_pi_history_series(),
         "pi_history_full": _build_pi_full_history_series(),
         "internet_monitor_history": _load_internet_monitor_history(),
-        "quote": {"text": quote} if quote else None,
+        "quote": _build_quote_payload(quote),
         "port_block": port_block if include_port_block else None,
         "error": "; ".join(errors) if errors else None,
     }
@@ -2000,6 +2081,28 @@ def api_port_block():
             }
         ),
         status_code,
+    )
+
+
+@app.route("/api/quote-favorites", methods=["POST"])
+def api_quote_favorites():
+    payload = request.get_json(silent=True) or {}
+    quote = _normalize_quote_text(payload.get("quote"))
+    favorite = payload.get("favorite")
+
+    if not quote:
+        return jsonify({"error": "Missing quote"}), 400
+    if not isinstance(favorite, bool):
+        return jsonify({"error": "Field 'favorite' must be boolean"}), 400
+
+    favorites = _set_quote_favorite(quote, favorite)
+    return jsonify(
+        {
+            "quote": quote,
+            "favorite": quote in favorites,
+            "favorites": favorites,
+            "favorites_count": len(favorites),
+        }
     )
 
 

@@ -275,6 +275,13 @@
         width: 100%;
       }
 
+      .quote-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
       .quote-title {
         text-transform: uppercase;
         letter-spacing: 0.12em;
@@ -283,11 +290,76 @@
         margin-bottom: 0.55rem;
       }
 
+      .quote-star-button,
+      .quote-action-button {
+        border: 1px solid rgba(148, 163, 184, 0.32);
+        background: rgba(15, 23, 42, 0.72);
+        color: #e2e8f0;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+      }
+
+      .quote-star-button:hover,
+      .quote-action-button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(250, 204, 21, 0.7);
+      }
+
+      .quote-star-button {
+        min-width: 2.5rem;
+        height: 2.5rem;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+      }
+
+      .quote-star-button.is-active {
+        color: #fde68a;
+        border-color: rgba(250, 204, 21, 0.72);
+        background: rgba(120, 53, 15, 0.35);
+      }
+
+      .quote-meta {
+        margin-bottom: 0.9rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.65rem;
+        font-size: 0.85rem;
+        color: #cbd5e1;
+      }
+
+      .quote-favorites-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        background: rgba(250, 204, 21, 0.14);
+        border: 1px solid rgba(250, 204, 21, 0.28);
+        color: #fde68a;
+      }
+
       .quote-text {
         font-size: 1.15rem;
         line-height: 1.6;
         color: #f8fafc;
         white-space: pre-line;
+      }
+
+      .quote-actions {
+        margin-top: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .quote-action-button {
+        padding: 0.5rem 0.9rem;
+        font-size: 0.9rem;
       }
 
       .metric-row {
@@ -533,8 +605,21 @@
       </section>
 
       <section class="quote-card" id="quote-card" data-reveal data-reveal-order="3" style="display: none">
-        <div class="quote-title">Quote of the day — A Course in Miracles</div>
+        <div class="quote-header">
+          <div>
+            <div class="quote-title">Quote of the day — A Course in Miracles</div>
+            <div class="quote-meta">
+              <span id="quote-mode-label">Quote of the day</span>
+              <span class="quote-favorites-badge" id="quote-favorites-count" style="display: none"></span>
+            </div>
+          </div>
+          <button type="button" class="quote-star-button" id="quote-favorite-toggle" aria-label="Guardar como favorita">☆</button>
+        </div>
         <div class="quote-text" id="quote-text"></div>
+        <div class="quote-actions">
+          <button type="button" class="quote-action-button" id="quote-next-favorite" style="display: none">Ver favorita</button>
+          <button type="button" class="quote-action-button" id="quote-show-daily" style="display: none">Volver a la cita del día</button>
+        </div>
       </section>
 
       <section class="card" id="port-block-card" data-reveal data-reveal-order="4" style="display: none">
@@ -583,6 +668,11 @@
       const updatedAt = document.getElementById("updated-at");
       const quoteCard = document.getElementById("quote-card");
       const quoteText = document.getElementById("quote-text");
+      const quoteModeLabel = document.getElementById("quote-mode-label");
+      const quoteFavoritesCount = document.getElementById("quote-favorites-count");
+      const quoteFavoriteToggle = document.getElementById("quote-favorite-toggle");
+      const quoteNextFavorite = document.getElementById("quote-next-favorite");
+      const quoteShowDaily = document.getElementById("quote-show-daily");
       const deviceCard = document.getElementById("device-card");
       const deviceTitle = document.getElementById("device-title");
       const deviceSubtitle = document.getElementById("device-subtitle");
@@ -629,6 +719,11 @@
       let piFullChart = null;
       let bitaxeBestChart = null;
       let latestPortBlockPayload = initialPortBlock || null;
+      let latestQuotePayload = initialQuote || null;
+      let quoteFavorites = Array.isArray(initialQuote?.favorites) ? [...initialQuote.favorites] : [];
+      let quoteBrowseIndex = -1;
+      let showingFavoriteQuote = false;
+      let currentQuoteText = "";
       let portBlockShowAllSources = false;
       const revealedKeys = new Set();
 
@@ -919,6 +1014,12 @@
         }
       }
 
+      function buildApiUrl(path) {
+        if (!authToken) return path;
+        const separator = path.includes("?") ? "&" : "?";
+        return `${path}${separator}token=${encodeURIComponent(authToken)}`;
+      }
+
       function cacheBustedUrl(url, version) {
         const params = [];
         if (authToken) params.push(`token=${encodeURIComponent(authToken)}`);
@@ -986,14 +1087,101 @@
         return verses.length > 1 ? verses.join("\n\n") : cleaned;
       }
 
+      function normalizeQuoteList(items) {
+        if (!Array.isArray(items)) return [];
+        const normalized = [];
+        const seen = new Set();
+        items.forEach((item) => {
+          const text = String(item || "").replace(/\s+/g, " ").trim();
+          if (!text || seen.has(text)) return;
+          seen.add(text);
+          normalized.push(text);
+        });
+        return normalized;
+      }
+
+      function applyFavoritesToQuotePayload(quotePayload, favorites) {
+        if (!quotePayload?.text) return quotePayload || null;
+        const normalizedFavorites = normalizeQuoteList(favorites);
+        return {
+          ...quotePayload,
+          text: String(quotePayload.text).replace(/\s+/g, " ").trim(),
+          favorites: normalizedFavorites,
+          favorites_count: normalizedFavorites.length,
+          is_favorite: normalizedFavorites.includes(String(quotePayload.text).replace(/\s+/g, " ").trim()),
+        };
+      }
+
+      function updateQuoteFavoriteControls(displayedText) {
+        const isFavorite = !!displayedText && quoteFavorites.includes(displayedText);
+        if (quoteFavoriteToggle) {
+          quoteFavoriteToggle.textContent = isFavorite ? "★" : "☆";
+          quoteFavoriteToggle.classList.toggle("is-active", isFavorite);
+          quoteFavoriteToggle.setAttribute(
+            "aria-label",
+            isFavorite ? "Quitar de favoritas" : "Guardar como favorita"
+          );
+        }
+
+        if (quoteFavoritesCount) {
+          if (quoteFavorites.length) {
+            quoteFavoritesCount.style.display = "inline-flex";
+            quoteFavoritesCount.textContent = `★ ${quoteFavorites.length} favorita${quoteFavorites.length === 1 ? "" : "s"}`;
+          } else {
+            quoteFavoritesCount.style.display = "none";
+            quoteFavoritesCount.textContent = "";
+          }
+        }
+
+        if (quoteNextFavorite) {
+          if (quoteFavorites.length) {
+            quoteNextFavorite.style.display = "inline-flex";
+            quoteNextFavorite.textContent = showingFavoriteQuote ? "Siguiente favorita" : "Ver favorita";
+          } else {
+            quoteNextFavorite.style.display = "none";
+            quoteNextFavorite.textContent = "Ver favorita";
+          }
+        }
+
+        if (quoteShowDaily) {
+          quoteShowDaily.style.display = showingFavoriteQuote ? "inline-flex" : "none";
+        }
+      }
+
       function renderQuote(quotePayload) {
-        const text = quotePayload?.text;
-        if (text) {
+        latestQuotePayload = quotePayload || null;
+        quoteFavorites = normalizeQuoteList(quotePayload?.favorites || []);
+
+        const dailyText = String(quotePayload?.text || "").replace(/\s+/g, " ").trim();
+        if (showingFavoriteQuote && quoteFavorites.length) {
+          if (quoteBrowseIndex < 0 || quoteBrowseIndex >= quoteFavorites.length) {
+            quoteBrowseIndex = 0;
+          }
+        } else {
+          showingFavoriteQuote = false;
+          quoteBrowseIndex = -1;
+        }
+
+        const displayedText = showingFavoriteQuote && quoteFavorites.length ? quoteFavorites[quoteBrowseIndex] : dailyText;
+        if (displayedText) {
           quoteCard.style.display = "block";
-          quoteText.textContent = formatQuoteForDisplay(text);
+          quoteText.textContent = formatQuoteForDisplay(displayedText);
+          currentQuoteText = displayedText;
+          if (quoteModeLabel) {
+            if (showingFavoriteQuote && quoteFavorites.length) {
+              quoteModeLabel.textContent = `Favorita ${quoteBrowseIndex + 1} de ${quoteFavorites.length}`;
+            } else {
+              quoteModeLabel.textContent = "Quote of the day";
+            }
+          }
+          updateQuoteFavoriteControls(displayedText);
         } else {
           quoteCard.style.display = "none";
           quoteText.textContent = "";
+          currentQuoteText = "";
+          showingFavoriteQuote = false;
+          quoteBrowseIndex = -1;
+          updateQuoteFavoriteControls("");
         }
       }
 
@@ -1962,6 +2150,50 @@
         }
       }
 
+      async function toggleCurrentQuoteFavorite() {
+        const quote = String(currentQuoteText || "").replace(/\s+/g, " ").trim();
+        if (!quote) return;
+
+        const shouldFavorite = !quoteFavorites.includes(quote);
+        const response = await fetch(buildApiUrl("api/quote-favorites"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quote, favorite: shouldFavorite }),
+        });
+        const payload = await parseApiJson(response, "Quote favorites API");
+
+        latestQuotePayload = applyFavoritesToQuotePayload(
+          latestQuotePayload || { text: payload.quote },
+          payload.favorites || []
+        );
+        quoteFavorites = normalizeQuoteList(payload.favorites || []);
+
+        if (showingFavoriteQuote) {
+          if (!quoteFavorites.length) {
+            showingFavoriteQuote = false;
+            quoteBrowseIndex = -1;
+          } else {
+            const currentIndex = quoteFavorites.indexOf(quote);
+            quoteBrowseIndex = currentIndex >= 0 ? currentIndex : 0;
+          }
+        }
+
+        renderQuote(latestQuotePayload);
+      }
+
+      function showNextFavoriteQuote() {
+        if (!quoteFavorites.length) return;
+        showingFavoriteQuote = true;
+        quoteBrowseIndex = (quoteBrowseIndex + 1 + quoteFavorites.length) % quoteFavorites.length;
+        renderQuote(latestQuotePayload);
+      }
+
+      function showDailyQuote() {
+        showingFavoriteQuote = false;
+        quoteBrowseIndex = -1;
+        renderQuote(latestQuotePayload);
+      }
+
       async function refresh() {
         try {
           const query = authToken ? `?token=${encodeURIComponent(authToken)}` : "";
@@ -2005,6 +2237,20 @@
           portBlockShowAllSources = !!portBlockGeoMapAllSourcesToggle.checked;
           renderPortBlock(latestPortBlockPayload);
         });
+      }
+
+      if (quoteFavoriteToggle) {
+        quoteFavoriteToggle.addEventListener("click", () => {
+          toggleCurrentQuoteFavorite().catch((err) => renderError(err.message));
+        });
+      }
+
+      if (quoteNextFavorite) {
+        quoteNextFavorite.addEventListener("click", showNextFavoriteQuote);
+      }
+
+      if (quoteShowDaily) {
+        quoteShowDaily.addEventListener("click", showDailyQuote);
       }
 
       renderRows(initialData || []);
