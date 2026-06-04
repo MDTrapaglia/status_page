@@ -95,7 +95,7 @@ STOCKS: List[Dict[str, str]] = [
     {"name": "Marvell Technology (MRVL)", "symbol": "MRVL", "tradingview": "NASDAQ:MRVL"},
     {"name": "Abbott Laboratories (ABT)", "symbol": "ABT", "tradingview": "NYSE:ABT"},
     {"name": "iShares Silver Trust (SLV)", "symbol": "SLV", "tradingview": "NYSEARCA:SLV"},
-    {"name": "International Business Machines (IBM)", "symbol": "IBM", "tradingview": "NYSE:IBM"},
+    {"name": "S&P 500", "symbol": "^GSPC", "tradingview": "SP:SPX"},
     {"name": "USD/ARS", "symbol": "ARS=X", "tradingview": "FX_IDC:USDARS"},
 ]
 BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr"
